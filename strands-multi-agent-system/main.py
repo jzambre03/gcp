@@ -944,6 +944,44 @@ async def validate_golden_branch(service_id: str, environment: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to validate golden branch: {str(e)}")
 
+@app.delete("/api/services/{service_id}/revoke-golden/{environment}")
+async def revoke_golden_branch(service_id: str, environment: str):
+    """Revoke (delete) the active golden branch for a service and environment"""
+    if service_id not in SERVICES_CONFIG:
+        raise HTTPException(404, f"Service {service_id} not found")
+    
+    config = SERVICES_CONFIG[service_id]
+    if environment not in config["environments"]:
+        raise HTTPException(400, f"Invalid environment '{environment}'. Must be one of: {config['environments']}")
+    
+    try:
+        from shared.golden_branch_tracker import validate_golden_exists, get_active_golden_branch, remove_golden_branch
+        
+        # Check if golden branch exists
+        if not validate_golden_exists(service_id, environment):
+            raise HTTPException(400, f"No golden branch found for {service_id}/{environment}")
+        
+        # Get the active golden branch
+        active_branch = get_active_golden_branch(service_id, environment)
+        
+        # Remove the golden branch from tracking
+        remove_golden_branch(service_id, environment, active_branch)
+        
+        print(f"✅ Revoked golden branch {active_branch} for {service_id}/{environment}")
+        
+        return {
+            "service_id": service_id,
+            "environment": environment,
+            "revoked_branch": active_branch,
+            "message": f"Golden branch {active_branch} has been revoked",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error revoking golden branch for {service_id}/{environment}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to revoke golden branch: {str(e)}")
+
 
 @app.get("/health")
 async def health_check():

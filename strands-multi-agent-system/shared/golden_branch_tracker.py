@@ -257,6 +257,21 @@ def remove_branch(service_id: str, environment: str, branch_name: str, branch_ty
     return False
 
 
+def remove_golden_branch(service_id: str, environment: str, branch_name: str) -> bool:
+    """
+    Remove a golden branch from tracking.
+    
+    Args:
+        service_id: Service identifier
+        environment: Environment name
+        branch_name: Golden branch name to remove
+        
+    Returns:
+        True if removed, False if not found
+    """
+    return remove_branch(service_id, environment, branch_name, "golden")
+
+
 # Initialize the branches file if it doesn't exist
 if not BRANCHES_FILE.exists():
     logger.info(f"Creating initial branches file at {BRANCHES_FILE}")

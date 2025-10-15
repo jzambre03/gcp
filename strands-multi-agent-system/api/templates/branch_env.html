@@ -13,10 +13,10 @@
       --ink:#111827; --muted:#6B7280; --bg:#F9FAFB;
       --panel:#FFFFFF; --line:#E5E7EB; --chip:#F3F4F6;
       --shadow:0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -2px rgba(0,0,0,.07);
-      --success: #10B981; --success-bg: #D1FAE5;
-      --green: #16A34A; --green-bg: #DCFCE7;
-      --yellow: #CA8A04; --yellow-bg: #FEF3C7;
-      --red: #DC2626; --red-bg: #FEE2E2;
+      --success: #4B5563; --success-bg: #F3F4F6;
+      --green: #4B5563; --green-bg: #F3F4F6;
+      --yellow: #6B7280; --yellow-bg: #F3F4F6;
+      --red: #6B7280; --red-bg: #F3F4F6;
     }
     *{box-sizing:border-box}
     html,body,#root{height:100%}
@@ -26,10 +26,10 @@
     .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:24px}
     .btn{border:1px solid #D1D5DB;background:#FFFFFF;color:#374151;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;}
     .btn:hover{background-color:#F9FAFB;}
-    .btn.primary{background: #1F2937; color: white; border-color: #1F2937;}
-    .btn.success{background: var(--green); color: white; border-color: var(--green);}
-    .btn.warning{background: var(--yellow); color: white; border-color: var(--yellow);}
-    .btn.danger{background: var(--red); color: white; border-color: var(--red);}
+    .btn.primary{background: #4B5563; color: white; border-color: #4B5563;}
+    .btn.success{background: #4B5563; color: white; border-color: #4B5563;}
+    .btn.warning{background: #6B7280; color: white; border-color: #6B7280;}
+    .btn.danger{background: #6B7280; color: white; border-color: #6B7280;}
     
     .header{margin-bottom:32px}
     .back-btn{margin-bottom:16px}
@@ -56,10 +56,10 @@
     
     .badge{display:inline-flex;align-items:center;padding:6px 16px;border-radius:999px;font-size:12px;font-weight:700;gap:6px;cursor:pointer;transition:all 0.2s}
     .badge:hover{transform:scale(1.05)}
-    .badge.success{background:var(--success-bg);color:var(--success);border:2px solid var(--success)}
-    .badge.warning{background:var(--yellow-bg);color:var(--yellow);border:2px solid var(--yellow)}
-    .badge.danger{background:var(--red-bg);color:var(--red);border:2px solid var(--red)}
-    .badge.production{background:var(--chip);color:var(--ink);border:2px solid var(--line)}
+    .badge.success{background:var(--success-bg);color:var(--success);border:1px solid var(--success)}
+    .badge.warning{background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow)}
+    .badge.danger{background:var(--red-bg);color:var(--red);border:1px solid var(--red)}
+    .badge.production{background:var(--chip);color:var(--ink);border:1px solid var(--line)}
     
     .commit-item{padding:16px;border:1px solid var(--line);border-radius:12px;margin-bottom:12px}
     .commit-item:last-child{margin-bottom:0}
@@ -91,6 +91,7 @@
         const [activeTab, setActiveTab] = React.useState('overview');
         const [showStagingModal, setShowStagingModal] = React.useState(false);
         const [serviceConfig, setServiceConfig] = React.useState(null);
+        const [certificationUpdateTrigger, setCertificationUpdateTrigger] = React.useState(0);
         
         // Get URL parameters to identify the specific issue
         const urlParams = new URLSearchParams(window.location.search);
@@ -147,6 +148,10 @@
           setShowStagingModal(false);
         }
         
+        function triggerCertificationUpdate() {
+          setCertificationUpdateTrigger(prev => prev + 1);
+        }
+        
         return e('div', {className: 'container'}, [
           // Header
           e('div', {className: 'header'}, [
@@ -155,7 +160,7 @@
               'Back to Issues'
             ]),
             e('h1', {className: 'title'}, [
-              e('span', null, '🌿'),
+              e('span', null, '⚙'),
               `Branch & Environment - ${serviceConfig?.name || 'Service'}`
             ]),
             e('p', {className: 'subtitle'}, `Track git branches, deployments, and environment-specific certifications`)
@@ -184,9 +189,9 @@
           ]),
           
           // Tab Content
-          activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId}),
+          activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, certificationUpdateTrigger}),
           activeTab === 'deployment' && e(DeploymentTab, {issueData, onStagingClick: handleStagingClick}),
-          activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId}),
+          activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, onCertificationUpdate: triggerCertificationUpdate}),
           activeTab === 'history' && e(HistoryTab, {issueData}),
           
           // Staging Modal
@@ -199,7 +204,7 @@
         ]);
       }
       
-      function OverviewTab({issueData, onStagingClick, serviceConfig, serviceId}) {
+      function OverviewTab({issueData, onStagingClick, serviceConfig, serviceId, certificationUpdateTrigger}) {
         const [branchStatus, setBranchStatus] = React.useState({});
         const [loading, setLoading] = React.useState(true);
         const [error, setError] = React.useState(null);
@@ -235,7 +240,7 @@
             }
           };
           loadBranchData();
-        }, [serviceConfig, serviceId]);
+        }, [serviceConfig, serviceId, certificationUpdateTrigger]);
         
         const handleEnvClick = (env) => {
           const status = branchStatus[env];
@@ -262,10 +267,10 @@
         
         const getEnvironmentColor = (env) => {
           const colors = {
-            'prod': 'var(--red)',
-            'dev': 'var(--green)',
-            'qa': 'var(--yellow)', 
-            'staging': 'var(--med)'
+            'prod': 'var(--ink)',
+            'dev': 'var(--ink)',
+            'qa': 'var(--ink)', 
+            'staging': 'var(--ink)'
           };
           return colors[env] || 'var(--muted)';
         };
@@ -286,7 +291,7 @@
               
               if (environments.length === 0) {
                 return e('div', {style: {textAlign: 'center', padding: '40px 20px', color: 'var(--muted)'}}, [
-                  e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '🌿'),
+                  e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '⚙'),
                   e('div', {style: {fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}, 'No Environments Configured'),
                   e('div', {style: {fontSize: '14px'}}, 'Check service configuration')
                 ]);
@@ -322,11 +327,11 @@
                   e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
                     isCertified ? 
                       e('span', {className: 'badge success'}, [
-                        e('span', null, '🏆'),
+                        e('span', null, '✓'),
                         'Certified'
                       ]) :
                       e('span', {className: 'badge warning'}, [
-                        e('span', null, '⏳'),
+                        e('span', null, '○'),
                         'Not Certified'
                       ])
                   ])
@@ -348,42 +353,42 @@
               e('div', {className: 'status-item'}, [
                 e('span', {className: 'status-label'}, 'Service:'),
                 e('div', {className: 'status-value'}, [
-                  e('span', null, '🏢'),
+                  e('span', null, '⚙'),
                   e('span', {className: 'mono'}, serviceConfig.name || serviceId)
                 ])
               ]),
               e('div', {className: 'status-item'}, [
                 e('span', {className: 'status-label'}, 'Service ID:'),
                 e('div', {className: 'status-value'}, [
-                  e('span', null, '🆔'),
+                  e('span', null, 'ID'),
                   e('span', {className: 'mono'}, serviceId)
                 ])
               ]),
               e('div', {className: 'status-item'}, [
                 e('span', {className: 'status-label'}, 'Main Branch:'),
                 e('div', {className: 'status-value'}, [
-                  e('span', null, '🌿'),
+                  e('span', null, 'BR'),
                   e('span', {className: 'mono'}, serviceConfig.main_branch || 'main')
                 ])
               ]),
               e('div', {className: 'status-item'}, [
                 e('span', {className: 'status-label'}, 'Environments:'),
                 e('div', {className: 'status-value'}, [
-                  e('span', null, '🌍'),
+                  e('span', null, 'ENV'),
                   e('span', null, `${serviceConfig.environments ? serviceConfig.environments.length : 0} configured`)
                 ])
               ]),
               e('div', {className: 'status-item'}, [
                 e('span', {className: 'status-label'}, 'Repository:'),
                 e('div', {className: 'status-value'}, [
-                  e('span', null, '📦'),
+                  e('span', null, 'REPO'),
                   e('span', {style: {fontSize: '12px', wordBreak: 'break-all'}}, serviceConfig.repo_url || 'Unknown')
                 ])
               ]),
               e('div', {className: 'status-item'}, [
                 e('span', {className: 'status-label'}, 'Status:'),
                 e('span', {className: serviceConfig.status === 'warning' ? 'badge warning' : 'badge success'}, 
-                  serviceConfig.status === 'warning' ? '⚠️ Warning' : '✅ Active'
+                  serviceConfig.status === 'warning' ? '⚠ Warning' : '✓ Active'
                 )
               ])
             ] : e('div', {style: {textAlign: 'center', padding: '20px', color: 'var(--muted)'}}, 'Service not found')
@@ -394,7 +399,7 @@
             e('div', {className: 'modal', onClick: (e) => e.stopPropagation()}, [
               e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}, [
                 e('h3', {style: {margin: 0, fontSize: '20px'}}, [
-                  e('span', {style: {marginRight: '8px'}}, '🌿'),
+                  e('span', {style: {marginRight: '8px'}}, '⚙'),
                   `${getEnvironmentDisplayName(selectedEnv)} - Branch Details`
                 ]),
                 e('button', {
@@ -513,7 +518,7 @@
         ]);
       }
       
-      function CertificationsTab({issueData, onStagingClick, serviceConfig, serviceId}) {
+      function CertificationsTab({issueData, onStagingClick, serviceConfig, serviceId, onCertificationUpdate}) {
         const [certifications, setCertifications] = React.useState({});
         const [loading, setLoading] = React.useState({});
         const [error, setError] = React.useState(null);
@@ -568,8 +573,52 @@
               }
             }));
             
+            // Trigger overview tab update
+            if (onCertificationUpdate) {
+              onCertificationUpdate();
+            }
+            
           } catch (err) {
             setError(`Failed to certify ${environment}: ${err.message}`);
+          } finally {
+            setLoading(prev => ({ ...prev, [environment]: false }));
+          }
+        };
+        
+        const handleRevoke = async (environment) => {
+          setLoading(prev => ({ ...prev, [environment]: true }));
+          setError(null);
+          
+          try {
+            const response = await fetch(`/api/services/${serviceId}/revoke-golden/${environment}`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Failed to revoke ${environment}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            // Update certifications state
+            setCertifications(prev => ({
+              ...prev,
+              [environment]: {
+                golden_exists: false,
+                active_golden_branch: null,
+                service_id: serviceId,
+                environment: environment
+              }
+            }));
+            
+            // Trigger overview tab update
+            if (onCertificationUpdate) {
+              onCertificationUpdate();
+            }
+            
+          } catch (err) {
+            setError(`Failed to revoke ${environment}: ${err.message}`);
           } finally {
             setLoading(prev => ({ ...prev, [environment]: false }));
           }
@@ -587,10 +636,10 @@
         
         const getEnvironmentColor = (env) => {
           const colors = {
-            'prod': 'var(--red)',
-            'dev': 'var(--green)',
-            'qa': 'var(--yellow)', 
-            'staging': 'var(--med)'
+            'prod': 'var(--ink)',
+            'dev': 'var(--ink)',
+            'qa': 'var(--ink)', 
+            'staging': 'var(--ink)'
           };
           return colors[env] || 'var(--muted)';
         };
@@ -638,16 +687,25 @@
               e('div', {style: {display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px'}}, [
                 isCertified ? [
                   e('span', {className: 'badge success'}, [
-                    e('span', null, '🏆'),
+                    e('span', null, '✓'),
                     'Certified'
                   ]),
-                  e('button', {
-                    className: 'btn',
-                    onClick: () => window.open(`/api/services/${serviceId}/branches/${env}`, '_blank')
-                  }, 'View Branches')
+                  e('div', {style: {display: 'flex', gap: '8px'}}, [
+                    e('button', {
+                      className: 'btn',
+                      disabled: isLoading,
+                      onClick: () => handleRevoke(env),
+                      style: {backgroundColor: '#6B7280', color: 'white', border: 'none'}
+                    }, isLoading ? 'Revoking...' : 'Revoke'),
+                    e('button', {
+                      className: 'btn success',
+                      disabled: isLoading,
+                      onClick: () => handleCertify(env)
+                    }, isLoading ? 'Re-certifying...' : 'Re-certify')
+                  ])
                 ] : [
                   e('span', {className: 'badge warning'}, [
-                    e('span', null, '⏳'),
+                    e('span', null, '○'),
                     'Not Certified'
                   ]),
                   e('button', {
