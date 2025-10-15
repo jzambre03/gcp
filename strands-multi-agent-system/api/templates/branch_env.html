@@ -137,7 +137,7 @@
               e('span', null, '🌿'),
               `Branch & Environment - ${file}`
             ]),
-            e('p', {className: 'subtitle'}, `Issue ID: ${issueId} • Track deployment status and environment certifications`)
+            e('p', {className: 'subtitle'}, `Track git branches, deployments, and environment-specific certifications`)
           ]),
           
           // Issue Alert (for non-allowed issues)
@@ -186,102 +186,283 @@
       }
       
       function OverviewTab({issueData, onStagingClick}) {
+        const [branchStatus, setBranchStatus] = React.useState({});
+        const [serviceConfig, setServiceConfig] = React.useState(null);
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState(null);
+        const [selectedEnv, setSelectedEnv] = React.useState(null);
+        const [showBranchDetails, setShowBranchDetails] = React.useState(false);
+        
+        // Get service ID from URL
+        const serviceId = window.location.pathname.includes('/service/') 
+          ? window.location.pathname.split('/service/')[1] 
+          : 'cxp_config_properties';
+        
+        // Load all data from APIs
+        React.useEffect(() => {
+          const loadAllData = async () => {
+            try {
+              // Load service configuration
+              const servicesResponse = await fetch('/api/services');
+              const servicesData = await servicesResponse.json();
+              const service = servicesData.services.find(s => s.id === serviceId);
+              setServiceConfig(service);
+              
+              // Get environments from service configuration (no hardcoded values)
+              const environments = service?.environments || ['prod', 'dev', 'qa', 'staging'];
+              
+              // Load branch status for all environments
+              const statusData = {};
+              for (const env of environments) {
+                try {
+                  const response = await fetch(`/api/services/${serviceId}/branches/${env}`);
+                  const data = await response.json();
+                  statusData[env] = data;
+                } catch (err) {
+                  statusData[env] = { error: err.message };
+                }
+              }
+              setBranchStatus(statusData);
+              
+            } catch (err) {
+              setError(`Failed to load data: ${err.message}`);
+            } finally {
+              setLoading(false);
+            }
+          };
+          loadAllData();
+        }, [serviceId]);
+        
+        const handleEnvClick = (env) => {
+          const status = branchStatus[env];
+          if (status && status.active_golden_branch) {
+            setSelectedEnv(env);
+            setShowBranchDetails(true);
+          }
+        };
+        
+        const closeBranchDetails = () => {
+          setShowBranchDetails(false);
+          setSelectedEnv(null);
+        };
+        
+        const getEnvironmentDisplayName = (env) => {
+          const names = {
+            'prod': 'Production',
+            'dev': 'Development', 
+            'qa': 'QA',
+            'staging': 'Staging'
+          };
+          return names[env] || env;
+        };
+        
+        const getEnvironmentColor = (env) => {
+          const colors = {
+            'prod': 'var(--red)',
+            'dev': 'var(--green)',
+            'qa': 'var(--yellow)', 
+            'staging': 'var(--med)'
+          };
+          return colors[env] || 'var(--muted)';
+        };
+        
         return e('div', {className: 'grid grid-2'}, [
-          // Current Status Card
+          // Environment Status Overview (moved to left)
           e('div', {className: 'card'}, [
-            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Current Status'),
-            e('div', {className: 'status-item'}, [
-              e('span', {className: 'status-label'}, 'Current Branch:'),
-              e('div', {className: 'status-value'}, [
-                e('span', null, '🌿'),
-                e('span', {className: 'mono'}, issueData.currentBranch)
-              ])
-            ]),
-            e('div', {className: 'status-item'}, [
-              e('span', {className: 'status-label'}, 'Deployed Branch:'),
-              e('div', {className: 'status-value'}, [
-                e('span', null, '🚀'),
-                e('span', {className: 'mono'}, issueData.deployedBranch)
-              ])
-            ]),
-            e('div', {className: 'status-item'}, [
-              e('span', {className: 'status-label'}, 'Last Commit:'),
-              e('div', {className: 'status-value'}, [
-                e('span', null, '📝'),
-                e('span', {className: 'commit-hash'}, issueData.lastCommit)
-              ])
-            ]),
-            e('div', {className: 'status-item'}, [
-              e('span', {className: 'status-label'}, 'Environment:'),
-              e('span', {className: 'badge production'}, 'production')
-            ])
+            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Available Environments'),
+            
+            error ? e('div', {style: {color: 'var(--red)', padding: '12px', background: 'var(--red-bg)', borderRadius: '8px', marginBottom: '16px'}}, 
+              `❌ ${error}`
+            ) : null,
+            
+            loading ? e('div', {style: {textAlign: 'center', padding: '20px', color: 'var(--muted)'}}, 'Loading environment data...') :
+            (() => {
+              // Get environments from service config (dynamic, no hardcoded values)
+              const environments = serviceConfig?.environments || [];
+              
+              // Filter to only show certified environments
+              const certifiedEnvs = environments.filter(env => {
+                const status = branchStatus[env] || {};
+                return status.active_golden_branch;
+              });
+              
+              if (certifiedEnvs.length === 0) {
+                return e('div', {style: {textAlign: 'center', padding: '40px 20px', color: 'var(--muted)'}}, [
+                  e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '🌿'),
+                  e('div', {style: {fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}, 'No Certified Environments'),
+                  e('div', {style: {fontSize: '14px'}}, 'Certify an environment to see it here')
+                ]);
+              }
+              
+              return certifiedEnvs.map(env => {
+                const status = branchStatus[env] || {};
+                const hasGolden = status.active_golden_branch;
+                const goldenCount = status.total_golden || 0;
+                const driftCount = status.total_drift || 0;
+                
+                return e('div', {
+                  key: env, 
+                  className: 'env-cert',
+                  style: {cursor: 'pointer', transition: 'all 0.2s'},
+                  onClick: () => handleEnvClick(env)
+                }, [
+                  e('div', null, [
+                    e('div', {className: 'env-name', style: {color: getEnvironmentColor(env)}}, 
+                      getEnvironmentDisplayName(env)
+                    ),
+                    e('div', {className: 'env-details'}, 
+                      `Golden: ${hasGolden}`
+                    ),
+                    e('div', {className: 'env-details'}, 
+                      `${goldenCount} golden, ${driftCount} drift branches`
+                    ),
+                    e('div', {className: 'env-details', style: {color: 'var(--muted)', fontSize: '12px', marginTop: '4px'}}, 
+                      'Click to view details →'
+                    )
+                  ]),
+                  e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
+                    e('span', {className: 'badge success'}, [
+                      e('span', null, '🏆'),
+                      'Certified'
+                    ])
+                  ])
+                ]);
+              });
+            })()
           ]),
           
-          // Certification Status Card - Environment Specific
+          // Service Overview Card (moved to right)
           e('div', {className: 'card'}, [
-            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Environment Certification Status'),
+            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Service Overview'),
             
-            // Production Environment
-            e('div', {className: 'env-cert'}, [
-              e('div', null, [
-                e('div', {className: 'env-name', style: {color: 'var(--green)'}}, 'production'),
-                e('div', {className: 'env-details'}, 'Certified on Oct 12, 2025 • Active deployment')
-              ]),
-              e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
-                e('span', {className: 'badge success'}, [
-                  e('span', null, '🏆'),
-                  'Certified'
+            error ? e('div', {style: {color: 'var(--red)', padding: '12px', background: 'var(--red-bg)', borderRadius: '8px', marginBottom: '16px'}}, 
+              `❌ ${error}`
+            ) : null,
+            
+            loading ? e('div', {style: {textAlign: 'center', padding: '20px', color: 'var(--muted)'}}, 'Loading service data...') :
+            serviceConfig ? [
+              e('div', {className: 'status-item'}, [
+                e('span', {className: 'status-label'}, 'Service:'),
+                e('div', {className: 'status-value'}, [
+                  e('span', null, '🏢'),
+                  e('span', {className: 'mono'}, serviceConfig.name || serviceId)
                 ])
-              ])
-            ]),
-            
-            // Staging Environment - Clickable with Pending Status
-            e('div', {className: 'env-cert', style: {cursor: 'pointer'}, onClick: onStagingClick}, [
-              e('div', null, [
-                e('div', {className: 'env-name', style: {color: 'var(--yellow)'}}, 'staging'),
-                e('div', {className: 'env-details'}, 'Pending certification • Click to review or promote')
               ]),
-              e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
-                e('span', {className: 'badge warning'}, [
-                  e('span', null, '⏳'),
-                  'Pending'
+              e('div', {className: 'status-item'}, [
+                e('span', {className: 'status-label'}, 'Service ID:'),
+                e('div', {className: 'status-value'}, [
+                  e('span', null, '🆔'),
+                  e('span', {className: 'mono'}, serviceId)
+                ])
+              ]),
+              e('div', {className: 'status-item'}, [
+                e('span', {className: 'status-label'}, 'Main Branch:'),
+                e('div', {className: 'status-value'}, [
+                  e('span', null, '🌿'),
+                  e('span', {className: 'mono'}, serviceConfig.main_branch || 'main')
+                ])
+              ]),
+              e('div', {className: 'status-item'}, [
+                e('span', {className: 'status-label'}, 'Environments:'),
+                e('div', {className: 'status-value'}, [
+                  e('span', null, '🌍'),
+                  e('span', null, `${serviceConfig.environments ? serviceConfig.environments.length : 0} configured`)
+                ])
+              ]),
+              e('div', {className: 'status-item'}, [
+                e('span', {className: 'status-label'}, 'Repository:'),
+                e('div', {className: 'status-value'}, [
+                  e('span', null, '📦'),
+                  e('span', {style: {fontSize: '12px', wordBreak: 'break-all'}}, serviceConfig.repo_url || 'Unknown')
+                ])
+              ]),
+              e('div', {className: 'status-item'}, [
+                e('span', {className: 'status-label'}, 'Status:'),
+                e('span', {className: serviceConfig.status === 'warning' ? 'badge warning' : 'badge success'}, 
+                  serviceConfig.status === 'warning' ? '⚠️ Warning' : '✅ Active'
+                )
+              ])
+            ] : e('div', {style: {textAlign: 'center', padding: '20px', color: 'var(--muted)'}}, 'Service not found')
+          ]),
+          
+          // Branch Details Popup
+          showBranchDetails && selectedEnv && e('div', {className: 'modal-overlay', onClick: closeBranchDetails}, [
+            e('div', {className: 'modal', onClick: (e) => e.stopPropagation()}, [
+              e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}, [
+                e('h3', {style: {margin: 0, fontSize: '20px'}}, [
+                  e('span', {style: {marginRight: '8px'}}, '🌿'),
+                  `${getEnvironmentDisplayName(selectedEnv)} - Branch Details`
                 ]),
-                e('span', {style: {color: 'var(--muted)', fontSize: '12px'}}, '→')
-              ])
-            ]),
-            
-            // Development Environment
-            e('div', {className: 'env-cert'}, [
-              e('div', null, [
-                e('div', {className: 'env-name', style: {color: 'var(--muted)'}}, 'development'),
-                e('div', {className: 'env-details'}, 'Not required for dev environment')
+                e('button', {
+                  onClick: closeBranchDetails,
+                  style: {background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: 'var(--muted)'}
+                }, '×')
               ]),
-              e('span', {className: 'badge', style: {background: '#f5f5f5', color: 'var(--muted)'}}, [
-                e('span', null, 'ℹ️'),
-                'N/A'
-              ])
-            ])
-          ]),
-          
-          // Issue Impact Assessment (Full Width)
-          e('div', {className: 'card', style: {gridColumn: '1 / -1'}}, [
-            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Issue Impact Assessment'),
-            e('div', {className: 'grid grid-2'}, [
-              e('div', null, [
-                e('h4', {style: {margin: '0 0 12px 0', color: 'var(--vz-red)'}}, 'Risk Analysis'),
-                e('p', {style: {margin: '0 0 8px 0'}}, `Risk Level: ${issueData.riskLevel.toUpperCase()}`),
-                e('p', {style: {margin: '0 0 8px 0'}}, `Affected File: ${issueData.file}`),
-                e('p', {style: {margin: '0'}}, `Environments: ${issueData.affectedEnvironments.join(', ')}`)
-              ]),
-              e('div', null, [
-                e('h4', {style: {margin: '0 0 12px 0', color: 'var(--green)'}}, 'Recommended Actions'),
-                e('ul', {style: {margin: 0, paddingLeft: '20px'}}, [
-                  e('li', null, 'Review change impact in staging environment'),
-                  e('li', null, 'Validate configuration against security policies'),
-                  e('li', null, 'Schedule deployment during maintenance window'),
-                  e('li', null, 'Monitor post-deployment metrics')
-                ])
-              ])
+              
+              (() => {
+                const status = branchStatus[selectedEnv] || {};
+                const goldenBranch = status.active_golden_branch;
+                const goldenBranches = status.golden_branches || [];
+                const driftBranches = status.drift_branches || [];
+                const service = serviceConfig;
+                
+                if (!service) {
+                  return e('div', {style: {textAlign: 'center', padding: '20px', color: 'var(--muted)'}}, 'Service data not available');
+                }
+                
+                return [
+                  // Current Golden Branch
+                  e('div', {style: {marginBottom: '24px'}}, [
+                    e('h4', {style: {margin: '0 0 12px 0', color: 'var(--green)'}}, 'Active Golden Branch'),
+                    e('div', {style: {background: 'var(--green-bg)', padding: '16px', borderRadius: '8px', border: '1px solid var(--green)'}}, [
+                      e('div', {style: {fontFamily: 'monospace', fontSize: '14px', fontWeight: '600', marginBottom: '8px'}}, goldenBranch),
+                      e('div', {style: {display: 'flex', gap: '12px', alignItems: 'center'}}, [
+                        e('a', {
+                          href: `${service.repo_url}/-/tree/${goldenBranch}`,
+                          target: '_blank',
+                          style: {color: 'var(--green)', textDecoration: 'none', fontWeight: '600'},
+                          onMouseOver: (e) => e.target.style.textDecoration = 'underline',
+                          onMouseOut: (e) => e.target.style.textDecoration = 'none'
+                        }, '🔗 View in GitLab'),
+                        e('span', {style: {color: 'var(--muted)', fontSize: '12px'}}, 'Opens in new tab')
+                      ])
+                    ])
+                  ]),
+                  
+                  // Branch Statistics
+                  e('div', {style: {display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px'}}, [
+                    e('div', {style: {background: 'var(--chip)', padding: '16px', borderRadius: '8px'}}, [
+                      e('div', {style: {fontSize: '24px', fontWeight: '700', color: 'var(--green)', marginBottom: '4px'}}, goldenBranches.length),
+                      e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 'Golden Branches')
+                    ]),
+                    e('div', {style: {background: 'var(--chip)', padding: '16px', borderRadius: '8px'}}, [
+                      e('div', {style: {fontSize: '24px', fontWeight: '700', color: 'var(--med)', marginBottom: '4px'}}, driftBranches.length),
+                      e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 'Drift Branches')
+                    ])
+                  ]),
+                  
+                  // Recent Branches
+                  e('div', {style: {marginBottom: '16px'}}, [
+                    e('h4', {style: {margin: '0 0 12px 0'}}, 'Recent Drift Branches'),
+                    driftBranches.length > 0 ? 
+                      e('div', {style: {maxHeight: '200px', overflowY: 'auto'}}, 
+                        driftBranches.slice(0, 5).map(branch => 
+                          e('div', {key: branch, style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--line)'}}, [
+                            e('span', {style: {fontFamily: 'monospace', fontSize: '12px'}}, branch),
+                            e('a', {
+                              href: `${service.repo_url}/-/tree/${branch}`,
+                              target: '_blank',
+                              style: {color: 'var(--med)', textDecoration: 'none', fontSize: '12px'},
+                              onMouseOver: (e) => e.target.style.textDecoration = 'underline',
+                              onMouseOut: (e) => e.target.style.textDecoration = 'none'
+                            }, 'View')
+                          ])
+                        )
+                      ) :
+                      e('div', {style: {color: 'var(--muted)', fontStyle: 'italic'}}, 'No drift branches yet')
+                  ])
+                ];
+              })()
             ])
           ])
         ]);
@@ -329,40 +510,158 @@
       }
       
       function CertificationsTab({issueData, onStagingClick}) {
+        const [certifications, setCertifications] = React.useState({});
+        const [loading, setLoading] = React.useState({});
+        const [error, setError] = React.useState(null);
+        
+        // Get service ID from URL or issueData
+        const serviceId = window.location.pathname.includes('/service/') 
+          ? window.location.pathname.split('/service/')[1] 
+          : 'cxp_config_properties'; // fallback
+        
+        // Load certification status for all environments
+        React.useEffect(() => {
+          const loadCertifications = async () => {
+            // Get environments from service configuration (no hardcoded values)
+            const servicesResponse = await fetch('/api/services');
+            const servicesData = await servicesResponse.json();
+            const service = servicesData.services.find(s => s.id === serviceId);
+            const environments = service?.environments || ['prod', 'dev', 'qa', 'staging'];
+            
+            const certData = {};
+            for (const env of environments) {
+              try {
+                const response = await fetch(`/api/services/${serviceId}/validate-golden/${env}`);
+                const data = await response.json();
+                certData[env] = data;
+              } catch (err) {
+                certData[env] = { golden_exists: false, error: err.message };
+              }
+            }
+            setCertifications(certData);
+          };
+          loadCertifications();
+        }, [serviceId]);
+        
+        const handleCertify = async (environment) => {
+          setLoading(prev => ({ ...prev, [environment]: true }));
+          setError(null);
+          
+          try {
+            const response = await fetch(`/api/services/${serviceId}/set-golden/${environment}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Failed to certify ${environment}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            
+            // Update certifications state
+            setCertifications(prev => ({
+              ...prev,
+              [environment]: {
+                golden_exists: true,
+                active_golden_branch: result.branch_name,
+                service_id: serviceId,
+                environment: environment
+              }
+            }));
+            
+          } catch (err) {
+            setError(`Failed to certify ${environment}: ${err.message}`);
+          } finally {
+            setLoading(prev => ({ ...prev, [environment]: false }));
+          }
+        };
+        
+        const getEnvironmentDisplayName = (env) => {
+          const names = {
+            'prod': 'Production',
+            'dev': 'Development', 
+            'qa': 'QA',
+            'staging': 'Staging'
+          };
+          return names[env] || env;
+        };
+        
+        const getEnvironmentColor = (env) => {
+          const colors = {
+            'prod': 'var(--red)',
+            'dev': 'var(--green)',
+            'qa': 'var(--yellow)', 
+            'staging': 'var(--med)'
+          };
+          return colors[env] || 'var(--muted)';
+        };
+        
         return e('div', {className: 'card'}, [
-          e('h3', {style: {margin: '0 0 20px 0'}}, 'Environment Certification Details'),
+          e('h3', {style: {margin: '0 0 20px 0'}}, 'Environment Certification & Golden Branches'),
+          e('p', {style: {color: 'var(--muted)', margin: '0 0 24px 0'}}, 
+            'Certify environments to create golden branches for drift analysis baseline'),
           
-          // Production Certification
-          e('div', {className: 'env-cert'}, [
-            e('div', null, [
-              e('div', {className: 'env-name', style: {color: 'var(--green)'}}, 'production'),
-              e('div', {className: 'env-details'}, 'Certified on Oct 12, 2025 by Security Team'),
-              e('div', {className: 'env-details'}, 'Certificate ID: PROD-CERT-2025-1012')
-            ]),
-            e('div', {style: {display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px'}}, [
-              e('span', {className: 'badge success'}, [
-                e('span', null, '🏆'),
-                'Certified'
-              ]),
-              e('button', {className: 'btn'}, 'View Certificate')
-            ])
-          ]),
+          // Error message
+          error && e('div', {style: {background: 'var(--red-bg)', border: '1px solid var(--red)', borderRadius: '8px', padding: '12px', marginBottom: '16px', color: 'var(--red)'}}, 
+            `❌ ${error}`
+          ),
           
-          // Staging Certification - Clickable
-          e('div', {className: 'env-cert', style: {cursor: 'pointer'}, onClick: onStagingClick}, [
-            e('div', null, [
-              e('div', {className: 'env-name', style: {color: 'var(--yellow)'}}, 'staging'),
-              e('div', {className: 'env-details'}, 'Pending certification review since Oct 13, 2025'),
-              e('div', {className: 'env-details'}, 'Requires security team approval • Click to proceed')
-            ]),
-            e('div', {style: {display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px'}}, [
-              e('span', {className: 'badge warning'}, [
-                e('span', null, '⏳'),
-                'Pending Review'
+          // Environment certifications
+          ...(() => {
+            // Get environments from service config (dynamic, no hardcoded values)
+            const environments = serviceConfig?.environments || [];
+            return environments.map(env => {
+            const cert = certifications[env] || {};
+            const isCertified = cert.golden_exists;
+            const isLoading = loading[env];
+            
+            return e('div', {key: env, className: 'env-cert'}, [
+              e('div', null, [
+                e('div', {className: 'env-name', style: {color: getEnvironmentColor(env)}}, 
+                  getEnvironmentDisplayName(env)
+                ),
+                isCertified ? [
+                  e('div', {className: 'env-details'}, 
+                    `Golden Branch: ${cert.active_golden_branch || 'Unknown'}`
+                  ),
+                  e('div', {className: 'env-details'}, 
+                    `Certified and ready for drift analysis`
+                  )
+                ] : [
+                  e('div', {className: 'env-details'}, 
+                    'No golden branch found - certification required'
+                  ),
+                  e('div', {className: 'env-details'}, 
+                    'Click "Certify" to create golden baseline'
+                  )
+                ]
               ]),
-              e('span', {style: {color: 'var(--muted)', fontSize: '12px'}}, 'Click to review →')
-            ])
-          ])
+              e('div', {style: {display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px'}}, [
+                isCertified ? [
+                  e('span', {className: 'badge success'}, [
+                    e('span', null, '🏆'),
+                    'Certified'
+                  ]),
+                  e('button', {
+                    className: 'btn',
+                    onClick: () => window.open(`/api/services/${serviceId}/branches/${env}`, '_blank')
+                  }, 'View Branches')
+                ] : [
+                  e('span', {className: 'badge warning'}, [
+                    e('span', null, '⏳'),
+                    'Not Certified'
+                  ]),
+                  e('button', {
+                    className: 'btn success',
+                    disabled: isLoading,
+                    onClick: () => handleCertify(env)
+                  }, isLoading ? 'Certifying...' : 'Certify')
+                ]
+              ])
+            ]);
+          });
+          })()
         ]);
       }
       

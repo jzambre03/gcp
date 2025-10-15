@@ -622,6 +622,7 @@
         const [error,setError] = React.useState(null);
         const [autoLoaded,setAutoLoaded] = React.useState(false);
         const [activeFilter,setActiveFilter] = React.useState('all'); // 'all', 'high', 'medium', 'low', 'allowed'
+        const [selectedEnvironment, setSelectedEnvironment] = React.useState('prod');
 
         // Filter functions
         function handleFilterClick(filter) {
@@ -657,7 +658,7 @@
           try {
             // Use service-specific endpoint if on service page
             const analyzeUrl = isServicePage 
-              ? `/api/services/${serviceId}/analyze`
+              ? `/api/services/${serviceId}/analyze/${selectedEnvironment}`
               : '/api/validate';
             
             const response = await fetch(analyzeUrl, {
@@ -763,7 +764,21 @@
               ]),
               e('div', {style:{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '16px'}},[
                 e('h1', {style:{fontSize: '24px'}}, isServicePage ? `🔍 ${serviceName} - Drift Analysis` : '🔍 Golden Config AI - Drift Review Assistant'),
-                e('div', {style:{display:'flex', gap:'8px'}}, [
+                e('div', {style:{display:'flex', gap:'8px', alignItems:'center'}}, [
+                  // Environment selector (only show on service pages)
+                  isServicePage && e('div', {style:{display:'flex', alignItems:'center', gap:'8px'}}, [
+                    e('label', {style:{fontSize:'14px', fontWeight:'600'}}, 'Environment:'),
+                    e('select', {
+                      value: selectedEnvironment,
+                      onChange: (e) => setSelectedEnvironment(e.target.value),
+                      style: {padding:'6px 12px', borderRadius:'6px', border:'1px solid #D1D5DB', fontSize:'14px'}
+                    }, [
+                      e('option', {value:'prod'}, 'Production'),
+                      e('option', {value:'dev'}, 'Development'),
+                      e('option', {value:'qa'}, 'QA'),
+                      e('option', {value:'staging'}, 'Staging')
+                    ])
+                  ]),
                   e('button', {className: 'btn success', onClick: runAnalysis, disabled: loading}, loading ? 'Running Analysis...' : '▶️ Run Analysis'),
                   e('button', {className: 'btn', onClick: loadFromAPI, disabled: loading}, '🔄 Refresh Results'),
                   e('input',{type:'file', id:'file-upload', accept:'.json,application/json',style:{display:'none'},onChange:onFile}),
