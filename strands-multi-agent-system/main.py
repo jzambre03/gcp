@@ -561,6 +561,12 @@ async def get_services():
     }
 
 
+@app.post("/api/services/{service_id}/analyze")
+async def analyze_service_legacy(service_id: str, background_tasks: BackgroundTasks):
+    """Legacy endpoint for backward compatibility - defaults to 'prod' environment"""
+    return await analyze_service(service_id, "prod", background_tasks)
+
+
 @app.post("/api/services/{service_id}/analyze/{environment}")
 async def analyze_service(service_id: str, environment: str, background_tasks: BackgroundTasks):
     """Analyze specific service for a specific environment using dynamic branch creation"""
