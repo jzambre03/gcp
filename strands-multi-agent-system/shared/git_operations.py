@@ -17,7 +17,38 @@ import logging
 import git
 from git.exc import GitCommandError
 
+# Configure logging to show in terminal
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()  # Print to console/terminal
+    ]
+)
+
 logger = logging.getLogger(__name__)
+
+
+def log_and_print(message: str, level: str = "info"):
+    """
+    Log message and also print to console to ensure visibility.
+    
+    Args:
+        message: Message to log
+        level: Log level (info, warning, error)
+    """
+    # Always print to console
+    print(message)
+    
+    # Also log
+    if level == "info":
+        logger.info(message)
+    elif level == "warning":
+        logger.warning(message)
+    elif level == "error":
+        logger.error(message)
+    else:
+        logger.info(message)
 
 
 def generate_unique_branch_name(prefix: str, environment: str) -> str:
@@ -188,7 +219,7 @@ def create_config_only_branch(
         repo_url: Repository URL
         main_branch: Source branch name (e.g., "main", "master")
         new_branch_name: Name for the new branch
-        config_paths: List of config file paths/patterns to include (e.g., ["config_files/", "*.yml", "*.properties"])
+        config_paths: List of config file paths/patterns to include (e.g., ["*.yml", "*.properties"])
         gitlab_token: Optional GitLab token for authentication
         
     Returns:
@@ -198,66 +229,128 @@ def create_config_only_branch(
     try:
         # Create temporary directory
         temp_dir = tempfile.mkdtemp(prefix="git_config_branch_")
-        logger.info(f"Creating config-only branch {new_branch_name} from {main_branch}")
-        logger.info(f"Config paths: {config_paths}")
+        log_and_print("=" * 80)
+        log_and_print(f"🌿 CREATING CONFIG-ONLY BRANCH: {new_branch_name}")
+        log_and_print(f"📂 Temp directory: {temp_dir}")
+        log_and_print(f"🎯 Source branch: {main_branch}")
+        log_and_print(f"📋 Config patterns to include:")
+        for idx, pattern in enumerate(config_paths, 1):
+            log_and_print(f"   {idx}. {pattern}")
+        log_and_print("=" * 80)
         
         # Setup authentication
         auth_url = setup_git_auth(repo_url, gitlab_token)
         
         # Initialize empty repo
-        logger.info(f"Initializing sparse checkout in: {temp_dir}")
+        log_and_print(f"Step 1: Initializing empty Git repository...")
         repo = git.Repo.init(temp_dir)
+        log_and_print(f"✅ Repository initialized at: {temp_dir}")
         
         # Add remote
+        log_and_print(f"Step 2: Adding remote 'origin'...")
         origin = repo.create_remote('origin', auth_url)
+        log_and_print(f"✅ Remote added: {repo_url}")
         
-        # Enable sparse checkout
+        # Enable sparse checkout BEFORE fetching
+        log_and_print(f"Step 3: Enabling sparse-checkout...")
         with repo.config_writer() as config:
             config.set_value('core', 'sparseCheckout', 'true')
+            config.set_value('core', 'sparseCheckoutCone', 'false')  # Use non-cone mode for patterns
+        log_and_print(f"✅ Sparse-checkout enabled (non-cone mode for wildcard support)")
         
         # Write sparse-checkout patterns
         sparse_checkout_file = Path(temp_dir) / '.git' / 'info' / 'sparse-checkout'
         sparse_checkout_file.parent.mkdir(parents=True, exist_ok=True)
         
+        log_and_print(f"Step 4: Writing sparse-checkout patterns to: {sparse_checkout_file}")
         with open(sparse_checkout_file, 'w') as f:
             for path in config_paths:
                 f.write(f"{path}\n")
         
-        logger.info(f"Sparse checkout configured for: {config_paths}")
+        # Verify sparse-checkout file was written
+        with open(sparse_checkout_file, 'r') as f:
+            written_patterns = f.read()
+        log_and_print(f"✅ Sparse-checkout patterns written:")
+        log_and_print(written_patterns)
         
-        # Fetch only the main branch with depth=1 (shallow clone)
-        logger.info(f"Fetching {main_branch} (shallow, config files only)...")
+        # Fetch only the main branch with depth=1 (shallow clone) and filter
+        log_and_print(f"Step 5: Fetching {main_branch} with sparse-checkout filter...")
+        log_and_print(f"   Using: git fetch origin {main_branch} --depth=1")
         origin.fetch(main_branch, depth=1)
+        log_and_print(f"✅ Fetch completed")
         
-        # Checkout the main branch
+        # Checkout the main branch (sparse-checkout will apply here)
+        log_and_print(f"Step 6: Checking out {main_branch} (sparse-checkout will filter files)...")
         repo.git.checkout(f'origin/{main_branch}')
+        log_and_print(f"✅ Checkout completed")
+        
+        # Count files in working directory
+        log_and_print(f"Step 7: Verifying sparse-checkout results...")
+        checked_out_files = []
+        for root, dirs, files in os.walk(temp_dir):
+            # Skip .git directory
+            if '.git' in root:
+                continue
+            for file in files:
+                rel_path = os.path.relpath(os.path.join(root, file), temp_dir)
+                checked_out_files.append(rel_path)
+        
+        log_and_print(f"✅ Sparse-checkout result: {len(checked_out_files)} files checked out")
+        if len(checked_out_files) <= 100:  # Only log if reasonable number
+            log_and_print(f"📄 Files in working directory:")
+            for idx, file in enumerate(sorted(checked_out_files), 1):
+                log_and_print(f"   {idx}. {file}")
+        else:
+            log_and_print(f"📄 Sample files (first 20):")
+            for idx, file in enumerate(sorted(checked_out_files)[:20], 1):
+                log_and_print(f"   {idx}. {file}")
+            log_and_print(f"   ... and {len(checked_out_files) - 20} more files")
         
         # Create new branch
-        logger.info(f"Creating new branch: {new_branch_name}")
+        log_and_print(f"Step 8: Creating new branch: {new_branch_name}")
         new_branch = repo.create_head(new_branch_name)
         new_branch.checkout()
+        log_and_print(f"✅ Branch created and checked out")
         
         # Push the new branch to remote
-        logger.info(f"Pushing config-only branch {new_branch_name} to remote")
+        log_and_print(f"Step 9: Pushing config-only branch to remote...")
         repo.git.push('--set-upstream', 'origin', new_branch_name)
+        log_and_print(f"✅ Branch pushed to remote")
         
-        logger.info(f"✅ Successfully created config-only branch {new_branch_name}")
+        log_and_print("=" * 80)
+        log_and_print(f"🎉 SUCCESS: Config-only branch {new_branch_name} created!")
+        log_and_print(f"   Files included: {len(checked_out_files)}")
+        log_and_print(f"   Branch pushed to: {repo_url}")
+        log_and_print("=" * 80)
         return True
         
     except GitCommandError as e:
-        logger.error(f"Git error creating config-only branch {new_branch_name}: {e}")
+        log_and_print("=" * 80, "error")
+        log_and_print(f"❌ GIT ERROR creating config-only branch {new_branch_name}", "error")
+        log_and_print(f"Error: {e}", "error")
+        log_and_print(f"Command: {e.command if hasattr(e, 'command') else 'unknown'}", "error")
+        log_and_print(f"Status: {e.status if hasattr(e, 'status') else 'unknown'}", "error")
+        log_and_print(f"Stdout: {e.stdout if hasattr(e, 'stdout') else 'none'}", "error")
+        log_and_print(f"Stderr: {e.stderr if hasattr(e, 'stderr') else 'none'}", "error")
+        log_and_print("=" * 80, "error")
         return False
     except Exception as e:
-        logger.error(f"Error creating config-only branch {new_branch_name}: {e}")
+        log_and_print("=" * 80, "error")
+        log_and_print(f"❌ ERROR creating config-only branch {new_branch_name}", "error")
+        log_and_print(f"Error type: {type(e).__name__}", "error")
+        log_and_print(f"Error message: {str(e)}", "error")
+        import traceback
+        log_and_print(f"Traceback:\n{traceback.format_exc()}", "error")
+        log_and_print("=" * 80, "error")
         return False
     finally:
         # Cleanup temporary directory
         if temp_dir and os.path.exists(temp_dir):
             try:
                 shutil.rmtree(temp_dir)
-                logger.info(f"Cleaned up temp directory: {temp_dir}")
+                log_and_print(f"🧹 Cleaned up temp directory: {temp_dir}")
             except Exception as e:
-                logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}")
+                log_and_print(f"⚠️ Failed to cleanup temp directory {temp_dir}: {e}", "warning")
 
 
 def list_branches_by_pattern(
