@@ -79,12 +79,13 @@ def emit_context_bundle(out_dir: Path,
     """
     Wrapper for emit_bundle with compatibility for old signature.
     Note: drift_v1 uses per_file_patches instead of evidence parameter.
+    The g_files bug has been fixed in drift_v1.py line 780.
     """
     # drift_v1.emit_bundle expects per_file_patches, but old code passes evidence
     # We'll generate empty patches dict for now
     per_file_patches: Dict[str, str] = {}
     
-    # Call the new emit_bundle
+    # Call emit_bundle from drift_v1 (bug is now fixed)
     return emit_bundle(
         out_dir=out_dir,
         golden=golden,

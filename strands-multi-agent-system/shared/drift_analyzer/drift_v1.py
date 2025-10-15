@@ -776,7 +776,8 @@ def emit_bundle(out_dir: Path,
 
     # ---- enrich overview/meta for UI header ----
     drifted_files_count = len(file_changes.get("added", [])) + len(file_changes.get("removed", [])) + len(file_changes.get("modified", []))
-    total_files = len(set([f["path"] for f in g_files]) | set([f["path"] for f in c_files]))  # type: ignore  # filled in main()
+    # Calculate total_files from overview data instead of relying on global variables
+    total_files = overview.get("golden_files", 0) + overview.get("candidate_files", 0)
 
     meta = {
         "golden": str(golden),
