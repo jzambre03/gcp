@@ -548,9 +548,9 @@ async def get_services():
             "last_check": last_result.get("timestamp") if last_result else None,
             "issues": issues_count,
             "repo_url": config["repo_url"],
-            "golden_branch": config["golden_branch"],
-            "drift_branch": config["drift_branch"],
-            "environment": config.get("environment", "production")
+            "main_branch": config["main_branch"],
+            "environments": config["environments"],
+            "total_environments": len(config["environments"])
         })
     
     return {
