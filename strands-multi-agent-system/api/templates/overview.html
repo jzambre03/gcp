@@ -426,6 +426,31 @@
       // Service Row Component
       function ServiceRow({service, onAnalyze, analyzingId}) {
         const isAnalyzing = analyzingId === service.id;
+        const [certifications, setCertifications] = React.useState({});
+        const [loading, setLoading] = React.useState(true);
+        
+        // Load certification status for all environments
+        React.useEffect(() => {
+          const loadCertifications = async () => {
+            const environments = service.environments || [];
+            const certData = {};
+            
+            for (const env of environments) {
+              try {
+                const response = await fetch(`/api/services/${service.id}/validate-golden/${env}`);
+                const data = await response.json();
+                certData[env] = data.golden_exists;
+              } catch (err) {
+                certData[env] = false;
+              }
+            }
+            
+            setCertifications(certData);
+            setLoading(false);
+          };
+          
+          loadCertifications();
+        }, [service.id, service.environments]);
         
         const handleRowClick = () => {
           window.location.href = `/service/${service.id}`;
@@ -446,15 +471,32 @@
           window.location.href = `/branch-environment?id=${service.id}&file=config_files/application.yml`;
         };
         
+        const getEnvironmentDisplayName = (env) => {
+          const names = {
+            'prod': 'Production',
+            'dev': 'Development',
+            'qa': 'QA',
+            'staging': 'Staging'
+          };
+          return names[env] || env;
+        };
+        
         return e('tr', {onClick: handleRowClick}, [
           e('td', {key: 'service'}, 
             e('div', {className: 'service-name'}, service.name)
           ),
           e('td', {key: 'env'}, 
-            e('span', {className: 'status-badge production'}, 'production')
-          ),
-          e('td', {key: 'status'}, 
-            e('span', {className: `status-badge ${service.status}`}, service.status)
+            loading ? e('span', {style: {color: '#999'}}, 'Loading...') :
+            e('div', {style: {display: 'flex', flexDirection: 'column', gap: '4px'}}, 
+              (service.environments || []).map(env => 
+                certifications[env] ? 
+                  e('div', {key: env, style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
+                    e('span', {style: {fontSize: '12px'}}, getEnvironmentDisplayName(env)),
+                    e('span', {style: {color: '#059669', fontSize: '14px'}}, '✓')
+                  ]) :
+                  null
+              )
+            )
           ),
           e('td', {key: 'check'}, formatTimestamp(service.last_check)),
           e('td', {key: 'issues'}, 
@@ -669,10 +711,9 @@
                       e('tr', null, [
                         e('th', {key: '1'}, 'Service'),
                         e('th', {key: '2'}, 'Environment'),
-                        e('th', {key: '3'}, 'Status'),
-                        e('th', {key: '4'}, 'Last Check'),
-                        e('th', {key: '5'}, 'Issues'),
-                        e('th', {key: '6'}, 'Actions')
+                        e('th', {key: '3'}, 'Last Check'),
+                        e('th', {key: '4'}, 'Issues'),
+                        e('th', {key: '5'}, 'Actions')
                       ])
                     ),
                     e('tbody', {key: 'body'}, 
