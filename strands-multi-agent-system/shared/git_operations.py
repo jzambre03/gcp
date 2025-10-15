@@ -9,6 +9,7 @@ import os
 import tempfile
 import shutil
 import uuid
+import fnmatch
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
@@ -229,63 +230,45 @@ def create_config_only_branch(
     try:
         # Create temporary directory
         temp_dir = tempfile.mkdtemp(prefix="git_config_branch_")
-        log_and_print("=" * 80)
-        log_and_print(f"🌿 CREATING CONFIG-ONLY BRANCH: {new_branch_name}")
-        log_and_print(f"📂 Temp directory: {temp_dir}")
+        log_and_print(f"🌿 Creating config-only branch: {new_branch_name}")
         log_and_print(f"🎯 Source branch: {main_branch}")
-        log_and_print(f"📋 Config patterns to include:")
-        for idx, pattern in enumerate(config_paths, 1):
-            log_and_print(f"   {idx}. {pattern}")
-        log_and_print("=" * 80)
         
         # Setup authentication
         auth_url = setup_git_auth(repo_url, gitlab_token)
         
         # Initialize empty repo
-        log_and_print(f"Step 1: Initializing empty Git repository...")
+        log_and_print(f"Initializing Git repository...")
         repo = git.Repo.init(temp_dir)
-        log_and_print(f"✅ Repository initialized at: {temp_dir}")
         
         # Add remote
-        log_and_print(f"Step 2: Adding remote 'origin'...")
+        log_and_print(f"Adding remote origin...")
         origin = repo.create_remote('origin', auth_url)
-        log_and_print(f"✅ Remote added: {repo_url}")
         
         # Enable sparse checkout BEFORE fetching
-        log_and_print(f"Step 3: Enabling sparse-checkout...")
+        log_and_print(f"Configuring sparse-checkout...")
         with repo.config_writer() as config:
             config.set_value('core', 'sparseCheckout', 'true')
             config.set_value('core', 'sparseCheckoutCone', 'false')  # Use non-cone mode for patterns
-        log_and_print(f"✅ Sparse-checkout enabled (non-cone mode for wildcard support)")
         
         # Write sparse-checkout patterns
         sparse_checkout_file = Path(temp_dir) / '.git' / 'info' / 'sparse-checkout'
         sparse_checkout_file.parent.mkdir(parents=True, exist_ok=True)
         
-        log_and_print(f"Step 4: Writing sparse-checkout patterns to: {sparse_checkout_file}")
         with open(sparse_checkout_file, 'w') as f:
+            # Explicitly exclude .git directory
+            f.write("!.git/\n")
             for path in config_paths:
                 f.write(f"{path}\n")
         
-        # Verify sparse-checkout file was written
-        with open(sparse_checkout_file, 'r') as f:
-            written_patterns = f.read()
-        log_and_print(f"✅ Sparse-checkout patterns written:")
-        log_and_print(written_patterns)
-        
         # Fetch only the main branch with depth=1 (shallow clone) and filter
-        log_and_print(f"Step 5: Fetching {main_branch} with sparse-checkout filter...")
-        log_and_print(f"   Using: git fetch origin {main_branch} --depth=1")
+        log_and_print(f"Fetching {main_branch} with config filtering...")
         origin.fetch(main_branch, depth=1)
-        log_and_print(f"✅ Fetch completed")
         
         # Checkout the main branch (sparse-checkout will apply here)
-        log_and_print(f"Step 6: Checking out {main_branch} (sparse-checkout will filter files)...")
+        log_and_print(f"Checking out {main_branch}...")
         repo.git.checkout(f'origin/{main_branch}')
-        log_and_print(f"✅ Checkout completed")
         
         # Count files in working directory
-        log_and_print(f"Step 7: Verifying sparse-checkout results...")
         checked_out_files = []
         for root, dirs, files in os.walk(temp_dir):
             # Skip .git directory
@@ -295,125 +278,120 @@ def create_config_only_branch(
                 rel_path = os.path.relpath(os.path.join(root, file), temp_dir)
                 checked_out_files.append(rel_path)
         
-        log_and_print(f"✅ Sparse-checkout result: {len(checked_out_files)} files checked out")
-        if len(checked_out_files) <= 100:  # Only log if reasonable number
-            log_and_print(f"📄 Files in working directory:")
-            for idx, file in enumerate(sorted(checked_out_files), 1):
-                log_and_print(f"   {idx}. {file}")
-        else:
-            log_and_print(f"📄 Sample files (first 20):")
-            for idx, file in enumerate(sorted(checked_out_files)[:20], 1):
-                log_and_print(f"   {idx}. {file}")
-            log_and_print(f"   ... and {len(checked_out_files) - 20} more files")
+        log_and_print(f"Filtered {len(checked_out_files)} config files")
         
-        # CRITICAL FIX: We need to create a NEW commit with only the config files
-        # The issue is that sparse-checkout only affects the working directory,
-        # not the Git tree. When we create a branch from origin/main, it points
-        # to a commit that has ALL files. We need to create a new commit with
-        # only the files we want.
-        
-        log_and_print(f"Step 8: Creating orphan branch with only config files...")
+        # Create orphan branch with only config files
+        log_and_print(f"Creating orphan branch with config files only...")
         
         # Create an orphan branch (no parent commits)
         repo.git.checkout('--orphan', new_branch_name)
-        log_and_print(f"✅ Orphan branch created: {new_branch_name}")
         
-        # HYBRID APPROACH: Try git-native first, fallback to manual
-        # The Git index still has references to ALL files from origin/main checkout
-        # We need to stage ONLY the config files from our sparse working directory
+        # Clear the index completely to remove any references to files from the original branch
+        repo.git.rm('-rf', '--cached', '.')
         
-        log_and_print(f"Step 9: Staging config files using best available method...")
-        staging_method = "unknown"
-        
+        # Use git read-tree to explicitly build tree with config files only
         try:
-            # APPROACH 1 (PREFERRED): Use git add --sparse (Git 2.25+)
-            # This is the Git-native way to respect sparse-checkout during staging
-            log_and_print(f"  → Trying 'git add --sparse' (Git-native method)...")
-            repo.git.add('--sparse', '.')
-            staging_method = "git add --sparse (Git-native)"
-            log_and_print(f"✅ Used {staging_method}")
+            # Start with empty index
+            repo.git.read_tree('--empty')
             
-        except GitCommandError as e:
-            # APPROACH 2 (FALLBACK): Manual index clearing
-            # Works with all Git versions, but requires two steps
-            log_and_print(f"  ⚠️ 'git add --sparse' not available (requires Git 2.25+)")
-            log_and_print(f"  → Falling back to manual index clearing...")
+            # Get list of all files in the original branch
+            ls_tree_output = repo.git.ls_tree('-r', '--name-only', f'origin/{main_branch}')
+            all_files_in_original = ls_tree_output.strip().split('\n') if ls_tree_output.strip() else []
             
-            # Clear the Git index (removes ALL file references)
-            repo.git.rm('-rf', '--cached', '.')
-            log_and_print(f"  → Git index cleared")
+            # Filter files using our config patterns
+            import fnmatch
+            filtered_files = []
             
-            # Add ONLY files from working directory (54 config files)
-            repo.git.add('.')
-            staging_method = "git rm --cached + git add (manual method)"
-            log_and_print(f"✅ Used {staging_method}")
+            for file_path in all_files_in_original:
+                # Skip .git directory files - these are internal Git files, not configuration files
+                if file_path.startswith('.git/'):
+                    continue
+                    
+                for pattern in config_paths:
+                    # Support both full path matching and filename matching
+                    if (fnmatch.fnmatch(file_path, pattern) or 
+                        fnmatch.fnmatch(os.path.basename(file_path), pattern)):
+                        filtered_files.append(file_path)
+                        break
+            
+            # Add each filtered file to the index from the original tree
+            files_actually_added = 0
+            for file_path in filtered_files:
+                try:
+                    # Get the full object info for this file from the original tree
+                    ls_tree_result = repo.git.ls_tree(f'origin/{main_branch}', '--', file_path)
+                    if ls_tree_result.strip():
+                        # Parse the ls-tree output: mode, type, hash, filename
+                        parts = ls_tree_result.strip().split(None, 3)  # Split on whitespace, max 4 parts
+                        if len(parts) >= 3:
+                            mode = parts[0]
+                            obj_hash = parts[2]
+                            
+                            # Add this file to the index with its original content
+                            repo.git.update_index('--add', '--cacheinfo', f'{mode},{obj_hash},{file_path}')
+                            files_actually_added += 1
+                            
+                except Exception as e:
+                    log_and_print(f"⚠️ Could not add {file_path} to index: {e}", "warning")
+                    # Continue with other files
+            
+        except Exception as e:
+            log_and_print(f"⚠️ Tree approach failed, using fallback method: {e}", "warning")
+            
+            # Fallback: Add files from working directory individually
+            files_added = 0
+            for file_path in checked_out_files:
+                full_path = Path(temp_dir) / file_path
+                if full_path.exists() and full_path.is_file():
+                    try:
+                        repo.git.add(file_path)
+                        files_added += 1
+                    except Exception as e:
+                        log_and_print(f"⚠️ Warning: Could not add {file_path}: {e}", "warning")
+            
+            files_actually_added = files_added
         
-        # Verify what was staged (works for both methods)
-        log_and_print(f"Step 10: Verifying staged files...")
+        # Verify staged files
         try:
-            staged_files = repo.git.diff('--cached', '--name-only').split('\n')
-            staged_count = len([f for f in staged_files if f])
-            log_and_print(f"✅ Staged {staged_count} files in Git index (method: {staging_method})")
+            staged_files = repo.git.diff('--cached', '--name-only').strip().split('\n')
+            staged_files = [f for f in staged_files if f.strip()]  # Remove empty strings
             
-            # Additional verification: check if count matches expected
-            if staged_count != len(checked_out_files):
-                log_and_print(f"⚠️ WARNING: Staged {staged_count} files but expected {len(checked_out_files)}")
-        except Exception as verify_error:
-            log_and_print(f"⚠️ Could not verify staged files: {verify_error}")
+            # Basic validation
+            expected_count = len(filtered_files) if 'filtered_files' in locals() else len(checked_out_files)
+            
+            if len(staged_files) > expected_count * 3:  # Flag major issues
+                log_and_print(f"🚨 WARNING: Staged {len(staged_files)} files but expected ~{expected_count}", "error")
+                log_and_print(f"The branch may contain non-config files!", "error")
+            else:
+                log_and_print(f"Staged {len(staged_files)} config files for commit")
+                
+        except Exception as e:
+            log_and_print(f"⚠️ Could not verify staged files: {e}", "warning")
         
-        # Create initial commit with only config files
-        log_and_print(f"Step 11: Creating commit with config files only...")
-        commit_message = f"Config-only snapshot from {main_branch}\n\nContains only configuration files ({len(checked_out_files)} files):\n- YAML configs\n- Properties files\n- Build configs\n- Container configs"
+        # Create commit with only config files
+        log_and_print(f"Creating commit and pushing to remote...")
+        commit_message = f"Config-only snapshot from {main_branch}\n\nContains only configuration files ({files_actually_added} files):\n- YAML configs\n- Properties files\n- Build configs\n- Container configs"
         repo.git.commit('-m', commit_message)
-        log_and_print(f"✅ Commit created")
-        
-        # Verify the commit only has config files
-        try:
-            commit_files = repo.git.ls_tree('-r', '--name-only', 'HEAD').split('\n')
-            commit_file_count = len([f for f in commit_files if f])
-            log_and_print(f"✅ Commit verified: contains {commit_file_count} files")
-        except:
-            log_and_print(f"✅ Commit created (verification skipped)")
         
         # Push the new branch to remote
-        log_and_print(f"Step 12: Pushing config-only branch to remote...")
         repo.git.push('--set-upstream', 'origin', new_branch_name)
-        log_and_print(f"✅ Branch pushed to remote")
         
-        log_and_print("=" * 80)
-        log_and_print(f"🎉 SUCCESS: Config-only branch {new_branch_name} created!")
-        log_and_print(f"   Files included: {len(checked_out_files)}")
-        log_and_print(f"   Branch pushed to: {repo_url}")
-        log_and_print("=" * 80)
+        log_and_print(f"✅ Config-only branch {new_branch_name} created with {files_actually_added} files")
         return True
         
     except GitCommandError as e:
-        log_and_print("=" * 80, "error")
-        log_and_print(f"❌ GIT ERROR creating config-only branch {new_branch_name}", "error")
-        log_and_print(f"Error: {e}", "error")
-        log_and_print(f"Command: {e.command if hasattr(e, 'command') else 'unknown'}", "error")
-        log_and_print(f"Status: {e.status if hasattr(e, 'status') else 'unknown'}", "error")
-        log_and_print(f"Stdout: {e.stdout if hasattr(e, 'stdout') else 'none'}", "error")
-        log_and_print(f"Stderr: {e.stderr if hasattr(e, 'stderr') else 'none'}", "error")
-        log_and_print("=" * 80, "error")
+        log_and_print(f"❌ Git error creating config-only branch {new_branch_name}: {e}", "error")
         return False
     except Exception as e:
-        log_and_print("=" * 80, "error")
-        log_and_print(f"❌ ERROR creating config-only branch {new_branch_name}", "error")
-        log_and_print(f"Error type: {type(e).__name__}", "error")
-        log_and_print(f"Error message: {str(e)}", "error")
-        import traceback
-        log_and_print(f"Traceback:\n{traceback.format_exc()}", "error")
-        log_and_print("=" * 80, "error")
+        log_and_print(f"❌ Error creating config-only branch {new_branch_name}: {e}", "error")
         return False
     finally:
         # Cleanup temporary directory
         if temp_dir and os.path.exists(temp_dir):
             try:
                 shutil.rmtree(temp_dir)
-                log_and_print(f"🧹 Cleaned up temp directory: {temp_dir}")
             except Exception as e:
-                log_and_print(f"⚠️ Failed to cleanup temp directory {temp_dir}: {e}", "warning")
+                log_and_print(f"⚠️ Failed to cleanup temp directory: {e}", "warning")
 
 
 def list_branches_by_pattern(
@@ -533,4 +511,3 @@ def validate_git_credentials() -> bool:
     has_credentials = bool(gitlab_username and gitlab_password)
     
     return has_token or has_credentials
-

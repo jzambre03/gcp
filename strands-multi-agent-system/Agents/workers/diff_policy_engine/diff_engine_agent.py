@@ -2030,12 +2030,13 @@ IMPORTANT:
         )
         files_with_drift = len(set(item.get("file", "") for item in all_merged_items if item.get("file")))
         
-        # Total config files compared
-        total_config_files = (
-            overview.get("total_files", 0) or
-            overview.get("files_compared", 0) or
-            overview.get("golden_files", 0) or overview.get("candidate_files", 0)
-        )
+        # Total config files compared (trust drift_v1.py's calculation)
+        # drift_v1.py now correctly calculates: candidate_count + removed_count (not summing both sides)
+        total_config_files = overview.get("total_files", 0)
+        
+        # If total_files is missing or zero, calculate from merged output (counts unique files)
+        if not total_config_files:
+            total_config_files = overview.get("candidate_files", 0) + len(context_bundle.get("file_changes", {}).get("removed", []))
         
         # Total drifts (all deltas)
         total_drifts = len(all_merged_items)

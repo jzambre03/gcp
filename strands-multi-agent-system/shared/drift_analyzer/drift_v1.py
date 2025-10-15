@@ -779,8 +779,16 @@ def emit_bundle(out_dir: Path,
 
     # ---- enrich overview/meta for UI header ----
     drifted_files_count = len(file_changes.get("added", [])) + len(file_changes.get("removed", [])) + len(file_changes.get("modified", []))
-    # Calculate total_files from overview data instead of relying on global variables
-    total_files = overview.get("golden_files", 0) + overview.get("candidate_files", 0)
+    
+    # Calculate total_files: UNIQUE files across both sides (not sum, which double-counts)
+    # Total unique files = files in candidate + files that were removed from golden
+    golden_count = overview.get("golden_files", 0)
+    candidate_count = overview.get("candidate_files", 0)  # or drift_files
+    removed_count = len(file_changes.get("removed", []))
+    
+    # For config-only branches with same file structure: candidate_count + 0 removed = correct count
+    # For branches with changes: candidate_count + removed gives union of all files
+    total_files = candidate_count + removed_count
 
     meta = {
         "golden": str(golden),
