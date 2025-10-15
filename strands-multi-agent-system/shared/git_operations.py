@@ -181,14 +181,14 @@ def create_config_only_branch(
     gitlab_token: Optional[str] = None
 ) -> bool:
     """
-    Create a new branch containing ONLY configuration files (FAST - sparse checkout).
-    This is much faster than cloning the entire repository.
+    Create a new branch containing ONLY configuration files.
+    Uses sparse-checkout for fast local clone, then creates a new commit with only config files.
     
     Args:
         repo_url: Repository URL
         main_branch: Source branch name (e.g., "main", "master")
         new_branch_name: Name for the new branch
-        config_paths: List of config file paths/patterns to include (e.g., ["config_files/", "*.yml", "*.properties"])
+        config_paths: List of config file paths/patterns to include (e.g., ["*.yml", "*.properties"])
         gitlab_token: Optional GitLab token for authentication
         
     Returns:
@@ -204,11 +204,9 @@ def create_config_only_branch(
         # Setup authentication
         auth_url = setup_git_auth(repo_url, gitlab_token)
         
-        # Initialize empty repo
-        logger.info(f"Initializing sparse checkout in: {temp_dir}")
+        # Clone with sparse-checkout for speed
+        logger.info(f"Cloning with sparse checkout (config files only)...")
         repo = git.Repo.init(temp_dir)
-        
-        # Add remote
         origin = repo.create_remote('origin', auth_url)
         
         # Enable sparse checkout
@@ -223,22 +221,36 @@ def create_config_only_branch(
             for path in config_paths:
                 f.write(f"{path}\n")
         
-        logger.info(f"Sparse checkout configured for: {config_paths}")
+        logger.info(f"Sparse checkout patterns: {config_paths}")
         
-        # Fetch only the main branch with depth=1 (shallow clone)
+        # Fetch with depth=1 (shallow clone)
         logger.info(f"Fetching {main_branch} (shallow, config files only)...")
         origin.fetch(main_branch, depth=1)
         
         # Checkout the main branch
         repo.git.checkout(f'origin/{main_branch}')
         
-        # Create new branch
-        logger.info(f"Creating new branch: {new_branch_name}")
-        new_branch = repo.create_head(new_branch_name)
-        new_branch.checkout()
+        # Create orphan branch (no history, fresh start)
+        logger.info(f"Creating orphan branch: {new_branch_name}")
+        repo.git.checkout('--orphan', new_branch_name)
+        
+        # Add only the files that exist in working directory (already filtered by sparse-checkout)
+        logger.info(f"Adding config files to new branch...")
+        repo.git.add('-A')
+        
+        # Get commit message from original branch
+        try:
+            original_commit = repo.commit(f'origin/{main_branch}')
+            commit_msg = f"Config snapshot from {main_branch}\n\nOriginal commit: {original_commit.hexsha}\nDate: {original_commit.committed_datetime}"
+        except:
+            commit_msg = f"Config snapshot from {main_branch}"
+        
+        # Commit the config files
+        logger.info(f"Committing config files...")
+        repo.index.commit(commit_msg)
         
         # Push the new branch to remote
-        logger.info(f"Pushing config-only branch {new_branch_name} to remote")
+        logger.info(f"Pushing config-only branch {new_branch_name} to remote...")
         repo.git.push('--set-upstream', 'origin', new_branch_name)
         
         logger.info(f"✅ Successfully created config-only branch {new_branch_name}")
@@ -246,9 +258,12 @@ def create_config_only_branch(
         
     except GitCommandError as e:
         logger.error(f"Git error creating config-only branch {new_branch_name}: {e}")
+        logger.error(f"Git command error details: {str(e)}")
         return False
     except Exception as e:
         logger.error(f"Error creating config-only branch {new_branch_name}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
     finally:
         # Cleanup temporary directory
