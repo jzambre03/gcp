@@ -90,11 +90,32 @@
       function BranchEnvironmentPage() {
         const [activeTab, setActiveTab] = React.useState('overview');
         const [showStagingModal, setShowStagingModal] = React.useState(false);
+        const [serviceConfig, setServiceConfig] = React.useState(null);
         
         // Get URL parameters to identify the specific issue
         const urlParams = new URLSearchParams(window.location.search);
         const issueId = urlParams.get('id') || 'unknown';
         const file = decodeURIComponent(urlParams.get('file') || 'config_files/application-vbg.yml');
+        
+        // Get service ID from URL
+        const serviceId = window.location.pathname.includes('/service/') 
+          ? window.location.pathname.split('/service/')[1] 
+          : issueId; // fallback to issueId
+        
+        // Load service configuration
+        React.useEffect(() => {
+          const loadServiceConfig = async () => {
+            try {
+              const servicesResponse = await fetch('/api/services');
+              const servicesData = await servicesResponse.json();
+              const service = servicesData.services.find(s => s.id === serviceId);
+              setServiceConfig(service);
+            } catch (err) {
+              console.error('Failed to load service config:', err);
+            }
+          };
+          loadServiceConfig();
+        }, [serviceId]);
         
         // Mock issue data - in real app, this would be fetched from API
         const issueData = {
@@ -135,19 +156,12 @@
             ]),
             e('h1', {className: 'title'}, [
               e('span', null, '🌿'),
-              `Branch & Environment - ${file}`
+              `Branch & Environment - ${serviceConfig?.name || 'Service'}`
             ]),
             e('p', {className: 'subtitle'}, `Track git branches, deployments, and environment-specific certifications`)
           ]),
           
-          // Issue Alert (for non-allowed issues)
-          issueData.riskLevel !== 'allowed' && e('div', {className: 'issue-alert'}, [
-            e('h3', null, [
-              e('span', null, '⚠️'),
-              ` ${issueData.riskLevel.toUpperCase()} RISK ISSUE DETECTED`
-            ]),
-            e('p', null, `${issueData.description}. Review deployment impact and certification status below.`)
-          ]),
+          // Risk banner removed from Overview tab as requested
           
           // Tabs
           e('div', {className: 'tabs'}, [
@@ -170,9 +184,9 @@
           ]),
           
           // Tab Content
-          activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick}),
+          activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId}),
           activeTab === 'deployment' && e(DeploymentTab, {issueData, onStagingClick: handleStagingClick}),
-          activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick}),
+          activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId}),
           activeTab === 'history' && e(HistoryTab, {issueData}),
           
           // Staging Modal
@@ -185,31 +199,21 @@
         ]);
       }
       
-      function OverviewTab({issueData, onStagingClick}) {
+      function OverviewTab({issueData, onStagingClick, serviceConfig, serviceId}) {
         const [branchStatus, setBranchStatus] = React.useState({});
-        const [serviceConfig, setServiceConfig] = React.useState(null);
         const [loading, setLoading] = React.useState(true);
         const [error, setError] = React.useState(null);
         const [selectedEnv, setSelectedEnv] = React.useState(null);
         const [showBranchDetails, setShowBranchDetails] = React.useState(false);
         
-        // Get service ID from URL
-        const serviceId = window.location.pathname.includes('/service/') 
-          ? window.location.pathname.split('/service/')[1] 
-          : 'cxp_config_properties';
-        
-        // Load all data from APIs
+        // Load branch status for all environments
         React.useEffect(() => {
-          const loadAllData = async () => {
+          const loadBranchData = async () => {
+            if (!serviceConfig) return;
+            
             try {
-              // Load service configuration
-              const servicesResponse = await fetch('/api/services');
-              const servicesData = await servicesResponse.json();
-              const service = servicesData.services.find(s => s.id === serviceId);
-              setServiceConfig(service);
-              
               // Get environments from service configuration (no hardcoded values)
-              const environments = service?.environments || ['prod', 'dev', 'qa', 'staging'];
+              const environments = serviceConfig?.environments || ['prod', 'dev', 'qa', 'staging'];
               
               // Load branch status for all environments
               const statusData = {};
@@ -230,8 +234,8 @@
               setLoading(false);
             }
           };
-          loadAllData();
-        }, [serviceId]);
+          loadBranchData();
+        }, [serviceConfig, serviceId]);
         
         const handleEnvClick = (env) => {
           const status = branchStatus[env];
@@ -269,7 +273,7 @@
         return e('div', {className: 'grid grid-2'}, [
           // Environment Status Overview (moved to left)
           e('div', {className: 'card'}, [
-            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Available Environments'),
+            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Environment Certification Status'),
             
             error ? e('div', {style: {color: 'var(--red)', padding: '12px', background: 'var(--red-bg)', borderRadius: '8px', marginBottom: '16px'}}, 
               `❌ ${error}`
@@ -280,51 +284,51 @@
               // Get environments from service config (dynamic, no hardcoded values)
               const environments = serviceConfig?.environments || [];
               
-              // Filter to only show certified environments
-              const certifiedEnvs = environments.filter(env => {
-                const status = branchStatus[env] || {};
-                return status.active_golden_branch;
-              });
-              
-              if (certifiedEnvs.length === 0) {
+              if (environments.length === 0) {
                 return e('div', {style: {textAlign: 'center', padding: '40px 20px', color: 'var(--muted)'}}, [
                   e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '🌿'),
-                  e('div', {style: {fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}, 'No Certified Environments'),
-                  e('div', {style: {fontSize: '14px'}}, 'Certify an environment to see it here')
+                  e('div', {style: {fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}, 'No Environments Configured'),
+                  e('div', {style: {fontSize: '14px'}}, 'Check service configuration')
                 ]);
               }
               
-              return certifiedEnvs.map(env => {
+              return environments.map(env => {
                 const status = branchStatus[env] || {};
                 const hasGolden = status.active_golden_branch;
                 const goldenCount = status.total_golden || 0;
                 const driftCount = status.total_drift || 0;
+                const isCertified = hasGolden;
                 
                 return e('div', {
                   key: env, 
                   className: 'env-cert',
-                  style: {cursor: 'pointer', transition: 'all 0.2s'},
-                  onClick: () => handleEnvClick(env)
+                  style: {cursor: isCertified ? 'pointer' : 'default', transition: 'all 0.2s'},
+                  onClick: () => isCertified && handleEnvClick(env)
                 }, [
                   e('div', null, [
                     e('div', {className: 'env-name', style: {color: getEnvironmentColor(env)}}, 
                       getEnvironmentDisplayName(env)
                     ),
                     e('div', {className: 'env-details'}, 
-                      `Golden: ${hasGolden}`
+                      `Golden: ${hasGolden || 'None'}`
                     ),
                     e('div', {className: 'env-details'}, 
                       `${goldenCount} golden, ${driftCount} drift branches`
                     ),
-                    e('div', {className: 'env-details', style: {color: 'var(--muted)', fontSize: '12px', marginTop: '4px'}}, 
+                    isCertified && e('div', {className: 'env-details', style: {color: 'var(--muted)', fontSize: '12px', marginTop: '4px'}}, 
                       'Click to view details →'
                     )
                   ]),
                   e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
-                    e('span', {className: 'badge success'}, [
-                      e('span', null, '🏆'),
-                      'Certified'
-                    ])
+                    isCertified ? 
+                      e('span', {className: 'badge success'}, [
+                        e('span', null, '🏆'),
+                        'Certified'
+                      ]) :
+                      e('span', {className: 'badge warning'}, [
+                        e('span', null, '⏳'),
+                        'Not Certified'
+                      ])
                   ])
                 ]);
               });
@@ -509,24 +513,18 @@
         ]);
       }
       
-      function CertificationsTab({issueData, onStagingClick}) {
+      function CertificationsTab({issueData, onStagingClick, serviceConfig, serviceId}) {
         const [certifications, setCertifications] = React.useState({});
         const [loading, setLoading] = React.useState({});
         const [error, setError] = React.useState(null);
         
-        // Get service ID from URL or issueData
-        const serviceId = window.location.pathname.includes('/service/') 
-          ? window.location.pathname.split('/service/')[1] 
-          : 'cxp_config_properties'; // fallback
-        
         // Load certification status for all environments
         React.useEffect(() => {
           const loadCertifications = async () => {
+            if (!serviceConfig) return;
+            
             // Get environments from service configuration (no hardcoded values)
-            const servicesResponse = await fetch('/api/services');
-            const servicesData = await servicesResponse.json();
-            const service = servicesData.services.find(s => s.id === serviceId);
-            const environments = service?.environments || ['prod', 'dev', 'qa', 'staging'];
+            const environments = serviceConfig?.environments || ['prod', 'dev', 'qa', 'staging'];
             
             const certData = {};
             for (const env of environments) {
@@ -541,7 +539,7 @@
             setCertifications(certData);
           };
           loadCertifications();
-        }, [serviceId]);
+        }, [serviceConfig, serviceId]);
         
         const handleCertify = async (environment) => {
           setLoading(prev => ({ ...prev, [environment]: true }));
