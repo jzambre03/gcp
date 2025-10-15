@@ -403,7 +403,8 @@ class ConfigCollectorAgent(Agent):
                 main_branch=main_branch,
                 environment=environment,
                 service_id=service_id,
-                target_folder=target_folder
+                target_folder=target_folder,
+                task_id=task.task_id
             ))
             
             if result.get('status') != 'success':
@@ -590,7 +591,8 @@ class ConfigCollectorAgent(Agent):
     async def run_complete_diff_workflow(self, repo_url: str, main_branch: str = "main", 
                                        environment: str = "prod",
                                        service_id: str = "service",
-                                       target_folder: str = "") -> Dict[str, Any]:
+                                       target_folder: str = "",
+                                       task_id: str = "") -> Dict[str, Any]:
         """
         Run complete drift analysis workflow with dynamic branch creation.
     
@@ -623,6 +625,10 @@ class ConfigCollectorAgent(Agent):
         logger.info("\n🔍 Phase 0: Validating golden branch and creating drift branch")
         logger.info("-" * 60)
         
+        # Initialize variables
+        golden_branch = None
+        drift_branch = None
+        
         try:
             # Import required modules
             import sys
@@ -635,14 +641,11 @@ class ConfigCollectorAgent(Agent):
             if not validate_golden_exists(service_id, environment):
                 error_msg = f"❌ No golden branch found for {service_id}/{environment}. Please create golden baseline first."
                 logger.error(error_msg)
-                return TaskResponse(
-                    task_id=task.task_id,
-                    status="failure",
-                    result={},
-                    error=error_msg,
-                    processing_time_seconds=time.time() - start_time,
-                    metadata={"agent": "config_collector", "phase": "golden_branch_validation"}
-                )
+                return {
+                    "status": "error",
+                    "error": error_msg,
+                    "timestamp": datetime.now().isoformat()
+                }
             
             golden_branch = get_active_golden_branch(service_id, environment)
             logger.info(f"✅ Golden branch found: {golden_branch}")
@@ -661,14 +664,11 @@ class ConfigCollectorAgent(Agent):
             if not success:
                 error_msg = f"❌ Failed to create drift branch {drift_branch}"
                 logger.error(error_msg)
-                return TaskResponse(
-                    task_id=task.task_id,
-                    status="failure",
-                    result={},
-                    error=error_msg,
-                    processing_time_seconds=time.time() - start_time,
-                    metadata={"agent": "config_collector", "phase": "drift_branch_creation"}
-                )
+                return {
+                    "status": "error",
+                    "error": error_msg,
+                    "timestamp": datetime.now().isoformat()
+                }
             
             # 3. Add drift branch to tracker
             add_drift_branch(service_id, environment, drift_branch)
@@ -677,14 +677,11 @@ class ConfigCollectorAgent(Agent):
         except Exception as e:
             error_msg = f"❌ Failed to validate/create branches: {e}"
             logger.error(error_msg)
-            return TaskResponse(
-                task_id=task.task_id,
-                status="failure",
-                result={},
-                error=error_msg,
-                processing_time_seconds=time.time() - start_time,
-                metadata={"agent": "config_collector", "phase": "branch_validation_creation"}
-            )
+            return {
+                "status": "error",
+                "error": error_msg,
+                "timestamp": datetime.now().isoformat()
+            }
         
         logger.info(f"\n✅ Phase 0 Complete!")
         logger.info(f"   Golden Branch: {golden_branch}")
