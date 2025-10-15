@@ -1,0 +1,263 @@
+{
+  "summary": {
+    "total_config_files": 5,
+    "files_with_drift": 3,
+    "total_drifts": 14,
+    "high_risk": 5,
+    "medium_risk": 4,
+    "low_risk": 2,
+    "allowed_variance": 3
+  },
+  "high": [
+    {
+      "id": "cfg~src/main/resources/bootstrap.yml.POSDB_JDBC_URL",
+      "file": "src/main/resources/bootstrap.yml",
+      "locator": {
+        "type": "keypath",
+        "value": "src/main/resources/bootstrap.yml.POSDB_JDBC_URL"
+      },
+      "old": "jdbc:oracle:thin:@nposqa4.ebiz.verizon.com:2055/nposqa4",
+      "new": "jdbc:oracle:thin:@nposqa4.ebiz.verizon.com:2055/nposqa4_new",
+      "drift_category": "Database",
+      "why": "Database connection string changed from nposqa4 to nposqa4_new without justification",
+      "remediation": {
+        "snippet": "POSDB_JDBC_URL: jdbc:oracle:thin:@nposqa4.ebiz.verizon.com:2055/nposqa4",
+        "steps": [
+          "Verify new database endpoint is accessible and authorized",
+          "Test database connectivity before deployment",
+          "Update connection pool settings if needed"
+        ]
+      },
+      "ai_review_assistant": {
+        "potential_risk": "Pointing the application to a new database can cause data corruption, service outages, or unauthorized data access if the new endpoint is not properly configured or authorized.",
+        "suggested_action": "Immediately verify this change with the database and infrastructure teams. Confirm the new endpoint is correct, accessible, and authorized for production use before deployment."
+      }
+    },
+    {
+      "id": "cfg~src/main/resources/bootstrap.yml.POSDB_USERNAME",
+      "file": "src/main/resources/bootstrap.yml",
+      "locator": {
+        "type": "keypath",
+        "value": "src/main/resources/bootstrap.yml.POSDB_USERNAME"
+      },
+      "old": "sqa4_user",
+      "new": "sqa4_user_admin",
+      "drift_category": "Database",
+      "why": "Database username escalated from sqa4_user to sqa4_user_admin without authorization",
+      "remediation": {
+        "snippet": "POSDB_USERNAME: sqa4_user",
+        "steps": [
+          "Revert to original read-only user account",
+          "Document justification if admin privileges are required",
+          "Obtain security team approval for privilege escalation"
+        ]
+      },
+      "ai_review_assistant": {
+        "potential_risk": "Escalating database privileges from a standard user to an admin account significantly increases the attack surface and security risks. Unauthorized admin access could lead to data breaches, data corruption, or complete database compromise.",
+        "suggested_action": "This change requires immediate senior security approval. Verify the justification for these elevated permissions and ensure principle of least privilege is maintained. Consider using separate admin credentials for specific operations instead."
+      }
+    },
+    {
+      "id": "cfg~src/main/resources/bootstrap.yml.POSDB_PASSWORD",
+      "file": "src/main/resources/bootstrap.yml",
+      "locator": {
+        "type": "keypath",
+        "value": "src/main/resources/bootstrap.yml.POSDB_PASSWORD"
+      },
+      "old": "AES:bHV6rgY3nDUlaV0Cyw1jTA",
+      "new": "AES:bHV6rgY3nDUlaV0Cyw1jTA_updated",
+      "drift_category": "Database",
+      "why": "Database password modified without authorization",
+      "remediation": {
+        "snippet": "POSDB_PASSWORD: AES:bHV6rgY3nDUlaV0Cyw1jTA",
+        "steps": [
+          "Revert to original encrypted password",
+          "Verify password change was not compromised",
+          "Follow secure password rotation procedures"
+        ]
+      },
+      "ai_review_assistant": {
+        "potential_risk": "Unauthorized credential changes are a critical security threat that could indicate a security breach, compromise authentication systems, or lead to unauthorized database access. This could result in data theft or system compromise.",
+        "suggested_action": "Immediately verify this change with the security and operations teams. Investigate whether this was an authorized change or potential security incident. Ensure proper password rotation procedures were followed and audit logs reviewed."
+      }
+    },
+    {
+      "id": "cfg+src/main/resources/bootstrap.yml.POSDB_CONNECTION_POOL_SIZE",
+      "file": "src/main/resources/bootstrap.yml",
+      "locator": {
+        "type": "keypath",
+        "value": "src/main/resources/bootstrap.yml.POSDB_CONNECTION_POOL_SIZE"
+      },
+      "old": null,
+      "new": "25",
+      "drift_category": "Database",
+      "why": "Unauthorized database connection pool configuration added",
+      "remediation": {
+        "snippet": "# Remove line: POSDB_CONNECTION_POOL_SIZE: 25"
+      }
+    },
+    {
+      "id": "hunk:src/main/resources/bootstrap.yml:3-10->3-8",
+      "file": "src/main/resources/bootstrap.yml",
+      "locator": {
+        "type": "unidiff",
+        "value": "src/main/resources/bootstrap.yml#3-8-3-6",
+        "old_start": 3,
+        "old_lines": 8,
+        "new_start": 3,
+        "new_lines": 6
+      },
+      "old": "spring:\n  application:\n    name: cxp-ordering-services\n  main:\n    allow-circular-references: true",
+      "new": "spring:\n  application:\n    name: cxp-ordering-services\n  main:\n    allow-circular-references: true\nPOSDB_JDBC_URL: jdbc:oracle:thin:@nposqa4.ebiz.verizon.com:2055/nposqa4_new\nPOSDB_USERNAME: sqa4_user_admin\nPOSDB_PASSWORD: AES:bHV6rgY3nDUlaV0Cyw1jTA_updated\nPOSDB_CONNECTION_POOL_SIZE: 25\nPOSDB_MAX_IDLE_TIME: 300",
+      "why": "Consolidates multiple database configuration changes requiring immediate reversal",
+      "remediation": {
+        "snippet": "Revert to golden configuration",
+        "patch_hint": "--- a/src/main/resources/bootstrap.yml\n+++ b/src/main/resources/bootstrap.yml\n@@ -3,8 +3,6 @@ spring:\n     name: cxp-ordering-services\n   main:\n     allow-circular-references: true\n-POSDB_JDBC_URL: jdbc:oracle:thin:@nposqa4.ebiz.verizon.com:2055/nposqa4_new\n-POSDB_USERNAME: sqa4_user_admin\n-POSDB_PASSWORD: AES:bHV6rgY3nDUlaV0Cyw1jTA_updated\n-POSDB_CONNECTION_POOL_SIZE: 25\n-POSDB_MAX_IDLE_TIME: 300\n+POSDB_JDBC_URL: jdbc:oracle:thin:@nposqa4.ebiz.verizon.com:2055/nposqa4\n+POSDB_USERNAME: sqa4_user\n+POSDB_PASSWORD: AES:bHV6rgY3nDUlaV0Cyw1jTA"
+      }
+    }
+  ],
+  "medium": [
+    {
+      "id": "cfg~helm/values.yaml.livenessProbe.periodSeconds",
+      "file": "helm/values.yaml",
+      "locator": {
+        "type": "yamlpath",
+        "value": "helm/values.yaml.livenessProbe.periodSeconds"
+      },
+      "old": "10",
+      "new": "30",
+      "drift_category": "Configuration",
+      "why": "Liveness probe period increased from 10s to 30s which may delay failure detection",
+      "remediation": {
+        "snippet": "livenessProbe:\n  periodSeconds: 10",
+        "steps": [
+          "Revert probe period to 10 seconds",
+          "Test application health check response times",
+          "Consult with SRE team if longer intervals are needed"
+        ]
+      },
+      "ai_review_assistant": {
+        "potential_risk": "Weakened health checks can hide application instability and delay failure detection. This means the system will take 3x longer to detect and respond to application failures, potentially leading to extended downtime and degraded user experience.",
+        "suggested_action": "Consult with SRE/DevOps teams to ensure this change meets reliability standards. If longer intervals are required due to slow startup times, consider using separate startup probes instead of weakening liveness checks."
+      }
+    },
+    {
+      "id": "cfg~helm/values.yaml.livenessProbe.failureThreshold",
+      "file": "helm/values.yaml",
+      "locator": {
+        "type": "yamlpath",
+        "value": "helm/values.yaml.livenessProbe.failureThreshold"
+      },
+      "old": "3",
+      "new": "5",
+      "why": "Liveness probe failure threshold increased from 3 to 5 weakening health checks",
+      "remediation": {
+        "snippet": "livenessProbe:\n  failureThreshold: 3"
+      }
+    },
+    {
+      "id": "dep~maven:spring-boot-starter-web",
+      "file": "pom.xml",
+      "locator": {
+        "type": "coord",
+        "value": "maven:spring-boot-starter-web"
+      },
+      "old": "2.7.0",
+      "new": "2.6.5",
+      "drift_category": "Dependency",
+      "why": "Spring Boot starter downgraded from 2.7.0 to 2.6.5 which may reintroduce vulnerabilities",
+      "remediation": {
+        "snippet": "<dependency>\n  <groupId>org.springframework.boot</groupId>\n  <artifactId>spring-boot-starter-web</artifactId>\n  <version>2.7.0</version>\n</dependency>",
+        "steps": [
+          "Upgrade back to Spring Boot 2.7.0 or later",
+          "Run vulnerability scan on version 2.6.5",
+          "Review release notes for security patches in 2.7.0"
+        ]
+      },
+      "ai_review_assistant": {
+        "potential_risk": "Downgrading dependencies can reintroduce known security vulnerabilities (CVEs) that were patched in newer versions. This exposes the application to potential exploits and security breaches.",
+        "suggested_action": "Scan version 2.6.5 for known CVEs and compare with 2.7.0. Confirm the reason for the downgrade and ensure it's not introducing critical security vulnerabilities. Consider upgrading to the latest stable version instead."
+      }
+    },
+    {
+      "id": "cfg~src/main/resources/application.yml.server.port",
+      "file": "src/main/resources/application.yml",
+      "locator": {
+        "type": "keypath",
+        "value": "src/main/resources/application.yml.server.port"
+      },
+      "old": "8080",
+      "new": "9090",
+      "why": "Server port changed from 8080 to 9090 which may break service discovery",
+      "remediation": {
+        "snippet": "server:\n  port: 8080"
+      }
+    }
+  ],
+  "low": [
+    {
+      "id": "cfg~src/main/resources/application.yml.logging.level.root",
+      "file": "src/main/resources/application.yml",
+      "locator": {
+        "type": "keypath",
+        "value": "src/main/resources/application.yml.logging.level.root"
+      },
+      "old": "INFO",
+      "new": "WARN",
+      "why": "Root logging level changed from INFO to WARN reducing log verbosity",
+      "remediation": {
+        "snippet": "logging:\n  level:\n    root: INFO"
+      }
+    },
+    {
+      "id": "cfg~README.md.version",
+      "file": "README.md",
+      "locator": {
+        "type": "path",
+        "value": "README.md"
+      },
+      "old": "Version 1.2.0",
+      "new": "Version 1.2.1",
+      "why": "Documentation version updated from 1.2.0 to 1.2.1",
+      "remediation": {
+        "snippet": "Version 1.2.0"
+      }
+    }
+  ],
+  "allowed_variance": [
+    {
+      "id": "cfg~src/main/resources/application-qa.yml.spring.profiles.active",
+      "file": "src/main/resources/application-qa.yml",
+      "locator": {
+        "type": "keypath",
+        "value": "src/main/resources/application-qa.yml.spring.profiles.active"
+      },
+      "old": "dev",
+      "new": "qa",
+      "rationale": "Environment-specific profile change from dev to qa (allowed by policy: env_specific)"
+    },
+    {
+      "id": "cfg~helm/values-qa.yaml.environment",
+      "file": "helm/values-qa.yaml",
+      "locator": {
+        "type": "yamlpath",
+        "value": "helm/values-qa.yaml.environment"
+      },
+      "old": "development",
+      "new": "qa",
+      "rationale": "Environment name updated for QA deployment (allowed by policy: env_specific)"
+    },
+    {
+      "id": "cfg~.gitlab-ci.yml.test.script",
+      "file": ".gitlab-ci.yml",
+      "locator": {
+        "type": "yamlpath",
+        "value": ".gitlab-ci.yml.test.script"
+      },
+      "old": "mvn test",
+      "new": "mvn clean test",
+      "rationale": "CI/CD pipeline improvement adding clean step (allowed by policy: build_config)"
+    }
+  ]
+}
+

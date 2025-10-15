@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Branch & Environment Tracking - Golden Config AI</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <style>
+    :root{
+      --vz-red:#B91C1C; --med:#D97706; --low:#4B5563; --allowed: #6B7280;
+      --ink:#111827; --muted:#6B7280; --bg:#F9FAFB;
+      --panel:#FFFFFF; --line:#E5E7EB; --chip:#F3F4F6;
+      --shadow:0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -2px rgba(0,0,0,.07);
+      --success: #10B981; --success-bg: #D1FAE5;
+      --green: #16A34A; --green-bg: #DCFCE7;
+      --yellow: #CA8A04; --yellow-bg: #FEF3C7;
+      --red: #DC2626; --red-bg: #FEE2E2;
+    }
+    *{box-sizing:border-box}
+    html,body,#root{height:100%}
+    body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+
+    .container{max-width:1400px;margin:0 auto;padding:24px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:24px}
+    .btn{border:1px solid #D1D5DB;background:#FFFFFF;color:#374151;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;}
+    .btn:hover{background-color:#F9FAFB;}
+    .btn.primary{background: #1F2937; color: white; border-color: #1F2937;}
+    .btn.success{background: var(--green); color: white; border-color: var(--green);}
+    .btn.warning{background: var(--yellow); color: white; border-color: var(--yellow);}
+    .btn.danger{background: var(--red); color: white; border-color: var(--red);}
+    
+    .header{margin-bottom:32px}
+    .back-btn{margin-bottom:16px}
+    .title{font-size:24px;font-weight:700;margin:0 0 8px 0;display:flex;align-items:center;gap:12px}
+    .subtitle{color:var(--muted);margin:0}
+    
+    .issue-alert{background:var(--red-bg);border:2px solid var(--red);border-radius:12px;padding:16px;margin-bottom:24px}
+    .issue-alert h3{color:var(--red);margin:0 0 8px 0;font-size:18px}
+    .issue-alert p{margin:0;color:#7F1D1D}
+    
+    .tabs{display:flex;background:var(--chip);border-radius:12px;padding:4px;margin-bottom:24px}
+    .tab{flex:1;padding:12px 24px;border-radius:8px;background:transparent;border:none;cursor:pointer;font-weight:600;transition:all 0.2s}
+    .tab.active{background:var(--panel);box-shadow:var(--shadow)}
+    
+    .grid{display:grid;gap:24px}
+    .grid-2{grid-template-columns:1fr 1fr}
+    .grid-4{grid-template-columns:repeat(4,1fr)}
+    
+    .status-item{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    .status-item:last-child{margin-bottom:0}
+    .status-label{color:var(--muted)}
+    .status-value{font-weight:600;display:flex;align-items:center;gap:8px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px}
+    
+    .badge{display:inline-flex;align-items:center;padding:6px 16px;border-radius:999px;font-size:12px;font-weight:700;gap:6px;cursor:pointer;transition:all 0.2s}
+    .badge:hover{transform:scale(1.05)}
+    .badge.success{background:var(--success-bg);color:var(--success);border:2px solid var(--success)}
+    .badge.warning{background:var(--yellow-bg);color:var(--yellow);border:2px solid var(--yellow)}
+    .badge.danger{background:var(--red-bg);color:var(--red);border:2px solid var(--red)}
+    .badge.production{background:var(--chip);color:var(--ink);border:2px solid var(--line)}
+    
+    .commit-item{padding:16px;border:1px solid var(--line);border-radius:12px;margin-bottom:12px}
+    .commit-item:last-child{margin-bottom:0}
+    .commit-hash{font-family:monospace;background:var(--chip);padding:4px 8px;border-radius:6px;font-size:12px}
+    .commit-meta{color:var(--muted);font-size:13px;margin-top:4px}
+    
+    .env-cert{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid var(--line)}
+    .env-cert:last-child{border-bottom:none}
+    .env-name{font-weight:600;font-size:16px}
+    .env-details{color:var(--muted);font-size:13px;margin-top:4px}
+    
+    .deployment-actions{margin-top:12px;display:flex;gap:8px}
+    
+    /* Modal styles */
+    .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000}
+    .modal{background:white;border-radius:16px;padding:24px;max-width:500px;width:90%;box-shadow:var(--shadow)}
+    .modal h3{margin:0 0 16px 0;color:var(--ink)}
+    .modal p{margin:0 0 16px 0;color:var(--muted)}
+    .modal-actions{display:flex;gap:8px;justify-content:flex-end}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/javascript">
+    (function(){
+      const e = React.createElement;
+      
+      function BranchEnvironmentPage() {
+        const [activeTab, setActiveTab] = React.useState('overview');
+        const [showStagingModal, setShowStagingModal] = React.useState(false);
+        
+        // Get URL parameters to identify the specific issue
+        const urlParams = new URLSearchParams(window.location.search);
+        const issueId = urlParams.get('id') || 'unknown';
+        const file = decodeURIComponent(urlParams.get('file') || 'config_files/application-vbg.yml');
+        
+        // Mock issue data - in real app, this would be fetched from API
+        const issueData = {
+          id: issueId,
+          file: file,
+          riskLevel: 'high', // Could be high, medium, low, allowed
+          description: `Configuration drift detected in ${file}`,
+          affectedEnvironments: ['production', 'staging'],
+          currentBranch: 'main',
+          deployedBranch: 'main',
+          lastCommit: 'a1b2c3d4'
+        };
+        
+        function goBack() {
+          window.history.back();
+        }
+        
+        function handleStagingClick() {
+          setShowStagingModal(true);
+        }
+        
+        function handlePromoteToStaging() {
+          alert('Promoting changes to staging environment...');
+          setShowStagingModal(false);
+        }
+        
+        function handleReviewStaging() {
+          alert('Opening staging review workflow...');
+          setShowStagingModal(false);
+        }
+        
+        return e('div', {className: 'container'}, [
+          // Header
+          e('div', {className: 'header'}, [
+            e('button', {className: 'btn back-btn', onClick: goBack}, [
+              e('span', null, '←'),
+              'Back to Issues'
+            ]),
+            e('h1', {className: 'title'}, [
+              e('span', null, '🌿'),
+              `Branch & Environment - ${file}`
+            ]),
+            e('p', {className: 'subtitle'}, `Issue ID: ${issueId} • Track deployment status and environment certifications`)
+          ]),
+          
+          // Issue Alert (for non-allowed issues)
+          issueData.riskLevel !== 'allowed' && e('div', {className: 'issue-alert'}, [
+            e('h3', null, [
+              e('span', null, '⚠️'),
+              ` ${issueData.riskLevel.toUpperCase()} RISK ISSUE DETECTED`
+            ]),
+            e('p', null, `${issueData.description}. Review deployment impact and certification status below.`)
+          ]),
+          
+          // Tabs
+          e('div', {className: 'tabs'}, [
+            e('button', {
+              className: `tab ${activeTab === 'overview' ? 'active' : ''}`,
+              onClick: () => setActiveTab('overview')
+            }, 'Overview'),
+            e('button', {
+              className: `tab ${activeTab === 'deployment' ? 'active' : ''}`,
+              onClick: () => setActiveTab('deployment')
+            }, 'Deployment Pipeline'),
+            e('button', {
+              className: `tab ${activeTab === 'certifications' ? 'active' : ''}`,
+              onClick: () => setActiveTab('certifications')
+            }, 'Certifications'),
+            e('button', {
+              className: `tab ${activeTab === 'history' ? 'active' : ''}`,
+              onClick: () => setActiveTab('history')
+            }, 'Change History')
+          ]),
+          
+          // Tab Content
+          activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick}),
+          activeTab === 'deployment' && e(DeploymentTab, {issueData, onStagingClick: handleStagingClick}),
+          activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick}),
+          activeTab === 'history' && e(HistoryTab, {issueData}),
+          
+          // Staging Modal
+          showStagingModal && e(StagingModal, {
+            onClose: () => setShowStagingModal(false),
+            onPromote: handlePromoteToStaging,
+            onReview: handleReviewStaging,
+            issueData
+          })
+        ]);
+      }
+      
+      function OverviewTab({issueData, onStagingClick}) {
+        return e('div', {className: 'grid grid-2'}, [
+          // Current Status Card
+          e('div', {className: 'card'}, [
+            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Current Status'),
+            e('div', {className: 'status-item'}, [
+              e('span', {className: 'status-label'}, 'Current Branch:'),
+              e('div', {className: 'status-value'}, [
+                e('span', null, '🌿'),
+                e('span', {className: 'mono'}, issueData.currentBranch)
+              ])
+            ]),
+            e('div', {className: 'status-item'}, [
+              e('span', {className: 'status-label'}, 'Deployed Branch:'),
+              e('div', {className: 'status-value'}, [
+                e('span', null, '🚀'),
+                e('span', {className: 'mono'}, issueData.deployedBranch)
+              ])
+            ]),
+            e('div', {className: 'status-item'}, [
+              e('span', {className: 'status-label'}, 'Last Commit:'),
+              e('div', {className: 'status-value'}, [
+                e('span', null, '📝'),
+                e('span', {className: 'commit-hash'}, issueData.lastCommit)
+              ])
+            ]),
+            e('div', {className: 'status-item'}, [
+              e('span', {className: 'status-label'}, 'Environment:'),
+              e('span', {className: 'badge production'}, 'production')
+            ])
+          ]),
+          
+          // Certification Status Card - Environment Specific
+          e('div', {className: 'card'}, [
+            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Environment Certification Status'),
+            
+            // Production Environment
+            e('div', {className: 'env-cert'}, [
+              e('div', null, [
+                e('div', {className: 'env-name', style: {color: 'var(--green)'}}, 'production'),
+                e('div', {className: 'env-details'}, 'Certified on Oct 12, 2025 • Active deployment')
+              ]),
+              e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
+                e('span', {className: 'badge success'}, [
+                  e('span', null, '🏆'),
+                  'Certified'
+                ])
+              ])
+            ]),
+            
+            // Staging Environment - Clickable with Pending Status
+            e('div', {className: 'env-cert', style: {cursor: 'pointer'}, onClick: onStagingClick}, [
+              e('div', null, [
+                e('div', {className: 'env-name', style: {color: 'var(--yellow)'}}, 'staging'),
+                e('div', {className: 'env-details'}, 'Pending certification • Click to review or promote')
+              ]),
+              e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
+                e('span', {className: 'badge warning'}, [
+                  e('span', null, '⏳'),
+                  'Pending'
+                ]),
+                e('span', {style: {color: 'var(--muted)', fontSize: '12px'}}, '→')
+              ])
+            ]),
+            
+            // Development Environment
+            e('div', {className: 'env-cert'}, [
+              e('div', null, [
+                e('div', {className: 'env-name', style: {color: 'var(--muted)'}}, 'development'),
+                e('div', {className: 'env-details'}, 'Not required for dev environment')
+              ]),
+              e('span', {className: 'badge', style: {background: '#f5f5f5', color: 'var(--muted)'}}, [
+                e('span', null, 'ℹ️'),
+                'N/A'
+              ])
+            ])
+          ]),
+          
+          // Issue Impact Assessment (Full Width)
+          e('div', {className: 'card', style: {gridColumn: '1 / -1'}}, [
+            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Issue Impact Assessment'),
+            e('div', {className: 'grid grid-2'}, [
+              e('div', null, [
+                e('h4', {style: {margin: '0 0 12px 0', color: 'var(--vz-red)'}}, 'Risk Analysis'),
+                e('p', {style: {margin: '0 0 8px 0'}}, `Risk Level: ${issueData.riskLevel.toUpperCase()}`),
+                e('p', {style: {margin: '0 0 8px 0'}}, `Affected File: ${issueData.file}`),
+                e('p', {style: {margin: '0'}}, `Environments: ${issueData.affectedEnvironments.join(', ')}`)
+              ]),
+              e('div', null, [
+                e('h4', {style: {margin: '0 0 12px 0', color: 'var(--green)'}}, 'Recommended Actions'),
+                e('ul', {style: {margin: 0, paddingLeft: '20px'}}, [
+                  e('li', null, 'Review change impact in staging environment'),
+                  e('li', null, 'Validate configuration against security policies'),
+                  e('li', null, 'Schedule deployment during maintenance window'),
+                  e('li', null, 'Monitor post-deployment metrics')
+                ])
+              ])
+            ])
+          ])
+        ]);
+      }
+      
+      function DeploymentTab({issueData, onStagingClick}) {
+        return e('div', {className: 'grid'}, [
+          e('div', {className: 'card'}, [
+            e('h3', {style: {margin: '0 0 20px 0'}}, 'Deployment Pipeline Status'),
+            
+            // Production Deployment
+            e('div', {className: 'commit-item', style: {borderColor: 'var(--green)'}}, [
+              e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}, [
+                e('div', null, [
+                  e('h4', {style: {margin: '0', color: 'var(--green)'}}, 'Production'),
+                  e('div', {className: 'commit-meta'}, 'Branch: main • Last deployed: 2 hours ago')
+                ]),
+                e('span', {className: 'badge success'}, 'Active')
+              ]),
+              e('div', {className: 'deployment-actions'}, [
+                e('button', {className: 'btn success'}, 'View Logs'),
+                e('button', {className: 'btn'}, 'Rollback')
+              ])
+            ]),
+            
+            // Staging Deployment - Clickable
+            e('div', {className: 'commit-item', style: {borderColor: 'var(--yellow)', cursor: 'pointer'}, onClick: onStagingClick}, [
+              e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}, [
+                e('div', null, [
+                  e('h4', {style: {margin: '0', color: 'var(--yellow)'}}, 'Staging'),
+                  e('div', {className: 'commit-meta'}, 'Branch: staging • Pending deployment • Click to manage')
+                ]),
+                e('div', {style: {display: 'flex', gap: '8px'}}, [
+                  e('span', {className: 'badge warning'}, 'Pending'),
+                  e('span', {style: {color: 'var(--muted)'}}, '→')
+                ])
+              ]),
+              e('div', {className: 'deployment-actions'}, [
+                e('button', {className: 'btn warning', onClick: (e) => {e.stopPropagation(); onStagingClick()}}, 'Deploy to Staging'),
+                e('button', {className: 'btn'}, 'Review Changes')
+              ])
+            ])
+          ])
+        ]);
+      }
+      
+      function CertificationsTab({issueData, onStagingClick}) {
+        return e('div', {className: 'card'}, [
+          e('h3', {style: {margin: '0 0 20px 0'}}, 'Environment Certification Details'),
+          
+          // Production Certification
+          e('div', {className: 'env-cert'}, [
+            e('div', null, [
+              e('div', {className: 'env-name', style: {color: 'var(--green)'}}, 'production'),
+              e('div', {className: 'env-details'}, 'Certified on Oct 12, 2025 by Security Team'),
+              e('div', {className: 'env-details'}, 'Certificate ID: PROD-CERT-2025-1012')
+            ]),
+            e('div', {style: {display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px'}}, [
+              e('span', {className: 'badge success'}, [
+                e('span', null, '🏆'),
+                'Certified'
+              ]),
+              e('button', {className: 'btn'}, 'View Certificate')
+            ])
+          ]),
+          
+          // Staging Certification - Clickable
+          e('div', {className: 'env-cert', style: {cursor: 'pointer'}, onClick: onStagingClick}, [
+            e('div', null, [
+              e('div', {className: 'env-name', style: {color: 'var(--yellow)'}}, 'staging'),
+              e('div', {className: 'env-details'}, 'Pending certification review since Oct 13, 2025'),
+              e('div', {className: 'env-details'}, 'Requires security team approval • Click to proceed')
+            ]),
+            e('div', {style: {display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px'}}, [
+              e('span', {className: 'badge warning'}, [
+                e('span', null, '⏳'),
+                'Pending Review'
+              ]),
+              e('span', {style: {color: 'var(--muted)', fontSize: '12px'}}, 'Click to review →')
+            ])
+          ])
+        ]);
+      }
+      
+      function HistoryTab({issueData}) {
+        return e('div', {className: 'card'}, [
+          e('h3', {style: {margin: '0 0 20px 0'}}, 'Change History'),
+          
+          e('div', {className: 'commit-item'}, [
+            e('div', {style: {display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}, [
+              e('span', {className: 'commit-hash'}, 'a1b2c3d4'),
+              e('span', {className: 'badge success'}, 'Deployed')
+            ]),
+            e('div', {className: 'commit-meta'}, 'production • 2 hours ago • Sarah Chen'),
+            e('div', {style: {marginTop: '4px'}}, 'feat: update session timeout configuration')
+          ]),
+          
+          e('div', {className: 'commit-item'}, [
+            e('div', {style: {display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}, [
+              e('span', {className: 'commit-hash'}, 'x9y8z7w6'),
+              e('span', {className: 'badge warning'}, 'Testing')
+            ]),
+            e('div', {className: 'commit-meta'}, 'staging • 1 day ago • Mike Johnson'),
+            e('div', {style: {marginTop: '4px'}}, 'fix: resolve database connection timeout')
+          ]),
+          
+          e('div', {className: 'commit-item'}, [
+            e('div', {style: {display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}, [
+              e('span', {className: 'commit-hash'}, 'p7q6r5s4'),
+              e('span', {className: 'badge danger'}, 'Failed')
+            ]),
+            e('div', {className: 'commit-meta'}, 'staging • 2 days ago • Alex Wong'),
+            e('div', {style: {marginTop: '4px'}}, 'config: attempt to update authentication settings')
+          ])
+        ]);
+      }
+      
+      function StagingModal({onClose, onPromote, onReview, issueData}) {
+        return e('div', {className: 'modal-overlay', onClick: onClose}, [
+          e('div', {className: 'modal', onClick: (e) => e.stopPropagation()}, [
+            e('h3', null, '🔄 Staging Environment Actions'),
+            e('p', null, `Manage staging deployment for ${issueData.file}`),
+            e('p', {style: {color: 'var(--yellow)'}}, 'Current Status: Pending Certification Review'),
+            
+            e('div', {style: {background: '#fff8dc', padding: '12px', borderRadius: '8px', margin: '16px 0'}}, [
+              e('strong', null, 'Available Actions:'),
+              e('ul', {style: {margin: '8px 0 0 0'}}, [
+                e('li', null, 'Promote changes to staging for testing'),
+                e('li', null, 'Request security team review'),
+                e('li', null, 'Schedule certification review meeting')
+              ])
+            ]),
+            
+            e('div', {className: 'modal-actions'}, [
+              e('button', {className: 'btn', onClick: onClose}, 'Cancel'),
+              e('button', {className: 'btn warning', onClick: onReview}, 'Request Review'),
+              e('button', {className: 'btn success', onClick: onPromote}, 'Promote to Staging')
+            ])
+          ])
+        ]);
+      }
+      
+      ReactDOM.createRoot(document.getElementById('root')).render(e(BranchEnvironmentPage));
+    })();
+  </script>
+</body>
+</html>

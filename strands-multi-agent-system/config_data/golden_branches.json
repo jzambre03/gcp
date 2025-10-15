@@ -1,0 +1,57 @@
+{
+  "cxp_ordering_services": {
+    "prod": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "dev": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "qa": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "staging": {
+      "golden_branches": [],
+      "drift_branches": []
+    }
+  },
+  "cxp_credit_services": {
+    "prod": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "dev": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "qa": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "staging": {
+      "golden_branches": [],
+      "drift_branches": []
+    }
+  },
+  "cxp_config_properties": {
+    "prod": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "dev": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "qa": {
+      "golden_branches": [],
+      "drift_branches": []
+    },
+    "staging": {
+      "golden_branches": [],
+      "drift_branches": []
+    }
+  }
+}
+
