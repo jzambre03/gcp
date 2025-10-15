@@ -306,14 +306,32 @@ def create_config_only_branch(
                 log_and_print(f"   {idx}. {file}")
             log_and_print(f"   ... and {len(checked_out_files) - 20} more files")
         
-        # Create new branch
-        log_and_print(f"Step 8: Creating new branch: {new_branch_name}")
-        new_branch = repo.create_head(new_branch_name)
-        new_branch.checkout()
-        log_and_print(f"✅ Branch created and checked out")
+        # CRITICAL FIX: We need to create a NEW commit with only the config files
+        # The issue is that sparse-checkout only affects the working directory,
+        # not the Git tree. When we create a branch from origin/main, it points
+        # to a commit that has ALL files. We need to create a new commit with
+        # only the files we want.
+        
+        log_and_print(f"Step 8: Creating orphan branch with only config files...")
+        
+        # Create an orphan branch (no parent commits)
+        repo.git.checkout('--orphan', new_branch_name)
+        log_and_print(f"✅ Orphan branch created: {new_branch_name}")
+        
+        # The working directory already has only the config files from sparse-checkout
+        # Now we need to stage them
+        log_and_print(f"Step 9: Staging config files...")
+        repo.git.add('.')
+        log_and_print(f"✅ Staged {len(checked_out_files)} config files")
+        
+        # Create initial commit with only config files
+        log_and_print(f"Step 10: Creating commit with config files only...")
+        commit_message = f"Config-only snapshot from {main_branch}\n\nContains only configuration files ({len(checked_out_files)} files):\n- YAML configs\n- Properties files\n- Build configs\n- Container configs"
+        repo.git.commit('-m', commit_message)
+        log_and_print(f"✅ Commit created with {len(checked_out_files)} files")
         
         # Push the new branch to remote
-        log_and_print(f"Step 9: Pushing config-only branch to remote...")
+        log_and_print(f"Step 11: Pushing config-only branch to remote...")
         repo.git.push('--set-upstream', 'origin', new_branch_name)
         log_and_print(f"✅ Branch pushed to remote")
         
