@@ -37,6 +37,19 @@ def generate_unique_branch_name(prefix: str, environment: str) -> str:
     return f"{prefix}_{environment}_{timestamp}_{unique_id}"
 
 
+def configure_git_user():
+    """Configure Git user settings from environment variables."""
+    git_user_name = os.getenv('GIT_USER_NAME', 'Config Drift Bot')
+    git_user_email = os.getenv('GIT_USER_EMAIL', 'drift-bot@example.com')
+    
+    try:
+        os.system(f'git config --global user.name "{git_user_name}"')
+        os.system(f'git config --global user.email "{git_user_email}"')
+        logger.info(f"✅ Git user configured as: {git_user_name} <{git_user_email}>")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not configure git user: {e}")
+
+
 def setup_git_auth(repo_url: str, gitlab_token: Optional[str] = None) -> str:
     """
     Set up Git authentication using environment variables or provided token.
@@ -238,6 +251,9 @@ def create_config_only_branch(
         logger.info(f"Adding config files to new branch...")
         repo.git.add('-A')
         
+        # Configure git user for commit (required for orphan branches)
+        configure_git_user()
+        
         # Get commit message from original branch
         try:
             original_commit = repo.commit(f'origin/{main_branch}')
@@ -245,9 +261,9 @@ def create_config_only_branch(
         except:
             commit_msg = f"Config snapshot from {main_branch}"
         
-        # Commit the config files
+        # Commit the config files using git command directly
         logger.info(f"Committing config files...")
-        repo.index.commit(commit_msg)
+        repo.git.commit('-m', commit_msg)
         
         # Push the new branch to remote
         logger.info(f"Pushing config-only branch {new_branch_name} to remote...")
