@@ -659,7 +659,7 @@
             const isLoading = loading[env];
             
             return e('div', {key: env, className: 'env-cert'}, [
-              // Top row: Environment name + Certified tag on left, buttons on right
+              // Top row: Environment name + Certified tag on left, buttons on far right
               e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}, [
                 e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
                   e('div', {className: 'env-name', style: {color: getEnvironmentColor(env)}}, 
@@ -676,15 +676,16 @@
                       className: 'btn',
                       disabled: isLoading,
                       onClick: () => handleRevoke(env),
-                      style: {backgroundColor: '#6B7280', color: 'white', border: 'none'}
+                      style: {backgroundColor: '#F3F4F6', color: '#111827', border: '1px solid #D1D5DB'}
                     }, [
                       e('span', {style: {marginRight: '6px'}}, '×'),
                       isLoading ? 'Revoking...' : 'Revoke'
                     ]),
                     e('button', {
-                      className: 'btn success',
+                      className: 'btn',
                       disabled: isLoading,
-                      onClick: () => handleCertify(env)
+                      onClick: () => handleCertify(env),
+                      style: {backgroundColor: '#F3F4F6', color: '#111827', border: '1px solid #D1D5DB'}
                     }, [
                       e('span', {style: {marginRight: '6px'}}, '↻'),
                       isLoading ? 'Re-certifying...' : 'Re-certify'
@@ -698,8 +699,8 @@
                   ]
                 ])
               ]),
-              // Details below
-              e('div', null, [
+              // Details below the environment name (not on the right)
+              e('div', {style: {marginLeft: '0'}}, [
                 isCertified ? [
                   e('div', {className: 'env-details'}, 
                     `Golden Branch: ${cert.active_golden_branch || 'Unknown'}`
