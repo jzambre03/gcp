@@ -173,6 +173,93 @@ def create_branch_from_main(
                 logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}")
 
 
+def create_config_only_branch(
+    repo_url: str,
+    main_branch: str,
+    new_branch_name: str,
+    config_paths: List[str],
+    gitlab_token: Optional[str] = None
+) -> bool:
+    """
+    Create a new branch containing ONLY configuration files (FAST - sparse checkout).
+    This is much faster than cloning the entire repository.
+    
+    Args:
+        repo_url: Repository URL
+        main_branch: Source branch name (e.g., "main", "master")
+        new_branch_name: Name for the new branch
+        config_paths: List of config file paths/patterns to include (e.g., ["config_files/", "*.yml", "*.properties"])
+        gitlab_token: Optional GitLab token for authentication
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    temp_dir = None
+    try:
+        # Create temporary directory
+        temp_dir = tempfile.mkdtemp(prefix="git_config_branch_")
+        logger.info(f"Creating config-only branch {new_branch_name} from {main_branch}")
+        logger.info(f"Config paths: {config_paths}")
+        
+        # Setup authentication
+        auth_url = setup_git_auth(repo_url, gitlab_token)
+        
+        # Initialize empty repo
+        logger.info(f"Initializing sparse checkout in: {temp_dir}")
+        repo = git.Repo.init(temp_dir)
+        
+        # Add remote
+        origin = repo.create_remote('origin', auth_url)
+        
+        # Enable sparse checkout
+        with repo.config_writer() as config:
+            config.set_value('core', 'sparseCheckout', 'true')
+        
+        # Write sparse-checkout patterns
+        sparse_checkout_file = Path(temp_dir) / '.git' / 'info' / 'sparse-checkout'
+        sparse_checkout_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(sparse_checkout_file, 'w') as f:
+            for path in config_paths:
+                f.write(f"{path}\n")
+        
+        logger.info(f"Sparse checkout configured for: {config_paths}")
+        
+        # Fetch only the main branch with depth=1 (shallow clone)
+        logger.info(f"Fetching {main_branch} (shallow, config files only)...")
+        origin.fetch(main_branch, depth=1)
+        
+        # Checkout the main branch
+        repo.git.checkout(f'origin/{main_branch}')
+        
+        # Create new branch
+        logger.info(f"Creating new branch: {new_branch_name}")
+        new_branch = repo.create_head(new_branch_name)
+        new_branch.checkout()
+        
+        # Push the new branch to remote
+        logger.info(f"Pushing config-only branch {new_branch_name} to remote")
+        repo.git.push('--set-upstream', 'origin', new_branch_name)
+        
+        logger.info(f"✅ Successfully created config-only branch {new_branch_name}")
+        return True
+        
+    except GitCommandError as e:
+        logger.error(f"Git error creating config-only branch {new_branch_name}: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error creating config-only branch {new_branch_name}: {e}")
+        return False
+    finally:
+        # Cleanup temporary directory
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+                logger.info(f"Cleaned up temp directory: {temp_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to cleanup temp directory {temp_dir}: {e}")
+
+
 def list_branches_by_pattern(
     repo_url: str,
     pattern: str,

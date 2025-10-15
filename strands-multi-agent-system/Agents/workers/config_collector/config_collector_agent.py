@@ -634,7 +634,7 @@ class ConfigCollectorAgent(Agent):
             import sys
             sys.path.append(str(Path(__file__).parent.parent.parent.parent))
             from shared.golden_branch_tracker import validate_golden_exists, get_active_golden_branch, add_drift_branch
-            from shared.git_operations import generate_unique_branch_name, create_branch_from_main
+            from shared.git_operations import generate_unique_branch_name, create_config_only_branch
             
             # 1. Validate golden branch exists
             logger.info(f"Checking for golden branch for {service_id}/{environment}...")
@@ -650,14 +650,29 @@ class ConfigCollectorAgent(Agent):
             golden_branch = get_active_golden_branch(service_id, environment)
             logger.info(f"✅ Golden branch found: {golden_branch}")
             
-            # 2. Create unique drift branch from main
+            # 2. Create unique drift branch from main (CONFIG-ONLY for speed)
             drift_branch = generate_unique_branch_name("drift", environment)
-            logger.info(f"Creating drift branch: {drift_branch} from {main_branch}...")
+            logger.info(f"Creating config-only drift branch: {drift_branch} from {main_branch}...")
             
-            success = create_branch_from_main(
+            # Define config paths to include (matches drift_v1.py classification)
+            # Excludes .json and .xml as per user request
+            config_paths = [
+                "*.yml", "*.yaml",              # YAML config files
+                "*.properties",                 # Properties files
+                "*.toml", "*.ini",              # TOML/INI config files
+                "*.cfg", "*.conf", "*.config",  # Configuration files
+                "Dockerfile", "docker-compose.yml", ".env.example",  # Docker/env
+                # Build files (also analyzed for config changes)
+                "pom.xml", "build.gradle", "build.gradle.kts",
+                "settings.gradle", "settings.gradle.kts",
+                "package.json", "requirements.txt", "pyproject.toml", "go.mod"
+            ]
+            
+            success = create_config_only_branch(
                 repo_url=repo_url,
                 main_branch=main_branch,
                 new_branch_name=drift_branch,
+                config_paths=config_paths,
                 gitlab_token=os.getenv('GITLAB_TOKEN')
             )
             
@@ -672,7 +687,7 @@ class ConfigCollectorAgent(Agent):
             
             # 3. Add drift branch to tracker
             add_drift_branch(service_id, environment, drift_branch)
-            logger.info(f"✅ Drift branch created and tracked: {drift_branch}")
+            logger.info(f"✅ Config-only drift branch created and tracked: {drift_branch}")
             
         except Exception as e:
             error_msg = f"❌ Failed to validate/create branches: {e}"

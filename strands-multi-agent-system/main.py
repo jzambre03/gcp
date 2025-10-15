@@ -57,25 +57,55 @@ app.add_middleware(
 config = Config()
 
 
+# Default config file paths for sparse checkout (config-only branches)
+# These patterns match what drift_v1.py classifies as "config" files (line 63)
+# Excludes .json and .xml as per user request
+DEFAULT_CONFIG_PATHS = [
+    "*.yml",                   # YAML config files
+    "*.yaml",                  # YAML config files
+    "*.properties",            # Properties files
+    "*.toml",                  # TOML config files
+    "*.ini",                   # INI config files
+    "*.cfg",                   # Configuration files
+    "*.conf",                  # Configuration files
+    "*.config",                # Configuration files
+    "Dockerfile",              # Docker configuration
+    "docker-compose.yml",      # Docker Compose
+    ".env.example",            # Environment template
+    # Build files (also analyzed for config changes)
+    "pom.xml",                 # Maven build file
+    "build.gradle",            # Gradle build file
+    "build.gradle.kts",        # Gradle Kotlin build file
+    "settings.gradle",         # Gradle settings
+    "settings.gradle.kts",     # Gradle Kotlin settings
+    "package.json",            # NPM package file
+    "requirements.txt",        # Python requirements
+    "pyproject.toml",          # Python project file
+    "go.mod",                  # Go module file
+]
+
 # Service Configuration
 SERVICES_CONFIG = {
     "cxp_ordering_services": {
         "name": "CXP Ordering Services",
         "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-ordering-services.git",
         "main_branch": "main",
-        "environments": ["prod", "dev", "qa", "staging"]
+        "environments": ["prod", "dev", "qa", "staging"],
+        "config_paths": DEFAULT_CONFIG_PATHS  # Can be customized per service
     },
     "cxp_credit_services": {
         "name": "CXP Credit Services",
         "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-credit-services.git",
         "main_branch": "main",
-        "environments": ["prod", "dev", "qa", "staging"]
+        "environments": ["prod", "dev", "qa", "staging"],
+        "config_paths": DEFAULT_CONFIG_PATHS
     },
     "cxp_config_properties": {
         "name": "CXP Config Properties",
         "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-config-properties.git",
         "main_branch": "main",
-        "environments": ["prod", "dev", "qa", "staging"]
+        "environments": ["prod", "dev", "qa", "staging"],
+        "config_paths": DEFAULT_CONFIG_PATHS
     }
 }
 
@@ -851,17 +881,23 @@ async def set_golden_branch(service_id: str, environment: str, branch_name: Opti
     
     try:
         from shared.golden_branch_tracker import add_golden_branch
-        from shared.git_operations import generate_unique_branch_name, create_branch_from_main, check_branch_exists
+        from shared.git_operations import (
+            generate_unique_branch_name, 
+            create_config_only_branch,  # NEW: Config-only branch creation
+            check_branch_exists
+        )
         
         # If branch_name not provided, create new golden branch
         if not branch_name:
             branch_name = generate_unique_branch_name("golden", environment)
             
-            # Create branch from main
-            success = create_branch_from_main(
+            # Create config-only branch from main (FAST - only config files)
+            config_paths = config.get("config_paths", DEFAULT_CONFIG_PATHS)
+            success = create_config_only_branch(
                 repo_url=config["repo_url"],
                 main_branch=config["main_branch"],
                 new_branch_name=branch_name,
+                config_paths=config_paths,
                 gitlab_token=os.getenv('GITLAB_TOKEN')
             )
             
