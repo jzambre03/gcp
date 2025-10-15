@@ -37,19 +37,6 @@ def generate_unique_branch_name(prefix: str, environment: str) -> str:
     return f"{prefix}_{environment}_{timestamp}_{unique_id}"
 
 
-def configure_git_user():
-    """Configure Git user settings from environment variables."""
-    git_user_name = os.getenv('GIT_USER_NAME', 'Config Drift Bot')
-    git_user_email = os.getenv('GIT_USER_EMAIL', 'drift-bot@example.com')
-    
-    try:
-        os.system(f'git config --global user.name "{git_user_name}"')
-        os.system(f'git config --global user.email "{git_user_email}"')
-        logger.info(f"✅ Git user configured as: {git_user_name} <{git_user_email}>")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not configure git user: {e}")
-
-
 def setup_git_auth(repo_url: str, gitlab_token: Optional[str] = None) -> str:
     """
     Set up Git authentication using environment variables or provided token.
@@ -194,14 +181,14 @@ def create_config_only_branch(
     gitlab_token: Optional[str] = None
 ) -> bool:
     """
-    Create a new branch containing ONLY configuration files.
-    Uses sparse-checkout for fast local clone, then creates a new commit with only config files.
+    Create a new branch containing ONLY configuration files (FAST - sparse checkout).
+    This is much faster than cloning the entire repository.
     
     Args:
         repo_url: Repository URL
         main_branch: Source branch name (e.g., "main", "master")
         new_branch_name: Name for the new branch
-        config_paths: List of config file paths/patterns to include (e.g., ["*.yml", "*.properties"])
+        config_paths: List of config file paths/patterns to include (e.g., ["config_files/", "*.yml", "*.properties"])
         gitlab_token: Optional GitLab token for authentication
         
     Returns:
@@ -217,118 +204,41 @@ def create_config_only_branch(
         # Setup authentication
         auth_url = setup_git_auth(repo_url, gitlab_token)
         
-        # APPROACH: Clone full repo with sparse-checkout, then filter and create orphan branch
-        logger.info(f"Step 1: Cloning repository with sparse-checkout...")
-        
-        # Initialize repo
+        # Initialize empty repo
+        logger.info(f"Initializing sparse checkout in: {temp_dir}")
         repo = git.Repo.init(temp_dir)
+        
+        # Add remote
         origin = repo.create_remote('origin', auth_url)
         
-        # Configure sparse-checkout BEFORE fetch
-        logger.info(f"Step 2: Configuring sparse-checkout...")
-        repo.git.config('core.sparseCheckout', 'true')
+        # Enable sparse checkout
+        with repo.config_writer() as config:
+            config.set_value('core', 'sparseCheckout', 'true')
         
-        # Write sparse-checkout patterns with proper format
+        # Write sparse-checkout patterns
         sparse_checkout_file = Path(temp_dir) / '.git' / 'info' / 'sparse-checkout'
         sparse_checkout_file.parent.mkdir(parents=True, exist_ok=True)
         
         with open(sparse_checkout_file, 'w') as f:
-            # Write patterns - need to be recursive
             for path in config_paths:
-                # For wildcards, we need /** prefix for recursive matching
-                if path.startswith('*'):
-                    f.write(f"**/{path}\n")  # Match anywhere in repo
-                else:
-                    f.write(f"{path}\n")
+                f.write(f"{path}\n")
         
-        logger.info(f"Sparse checkout patterns written: {config_paths}")
+        logger.info(f"Sparse checkout configured for: {config_paths}")
         
-        # Fetch only main branch with depth=1
-        logger.info(f"Step 3: Fetching {main_branch} (shallow)...")
+        # Fetch only the main branch with depth=1 (shallow clone)
+        logger.info(f"Fetching {main_branch} (shallow, config files only)...")
         origin.fetch(main_branch, depth=1)
         
-        # Read the tree and checkout only sparse files
-        logger.info(f"Step 4: Checking out sparse files from {main_branch}...")
+        # Checkout the main branch
         repo.git.checkout(f'origin/{main_branch}')
         
-        # List what files we actually got
-        import glob
-        all_files = []
-        for root, dirs, files in os.walk(temp_dir):
-            # Skip .git directory
-            if '.git' in root:
-                continue
-            for file in files:
-                rel_path = os.path.relpath(os.path.join(root, file), temp_dir)
-                all_files.append(rel_path)
-        
-        logger.info(f"Files in working directory after sparse checkout: {len(all_files)} files")
-        if len(all_files) <= 100:  # Only log if reasonable number
-            for f in all_files[:20]:  # Log first 20
-                logger.info(f"  - {f}")
-            if len(all_files) > 20:
-                logger.info(f"  ... and {len(all_files) - 20} more files")
-        
-        # Create orphan branch (fresh start, no history)
-        logger.info(f"Step 5: Creating orphan branch {new_branch_name}...")
-        repo.git.checkout('--orphan', new_branch_name)
-        
-        # Remove all files first
-        repo.git.rm('-rf', '--cached', '.')
-        
-        # Add only the files that match our patterns
-        logger.info(f"Step 6: Adding config files to orphan branch...")
-        for pattern in config_paths:
-            try:
-                # Try to add files matching this pattern
-                if pattern.startswith('*'):
-                    # For wildcards, use find to locate files
-                    matching_files = []
-                    for root, dirs, files in os.walk(temp_dir):
-                        if '.git' in root:
-                            continue
-                        for file in files:
-                            if file.endswith(pattern.replace('*', '')):
-                                rel_path = os.path.relpath(os.path.join(root, file), temp_dir)
-                                matching_files.append(rel_path)
-                    
-                    for file_path in matching_files:
-                        try:
-                            repo.git.add(file_path)
-                        except:
-                            pass
-                else:
-                    # For specific files/directories, add directly
-                    try:
-                        repo.git.add(pattern)
-                    except:
-                        pass
-            except Exception as e:
-                logger.warning(f"Could not add pattern {pattern}: {e}")
-        
-        # Check what we're about to commit
-        try:
-            status = repo.git.status('--short')
-            logger.info(f"Files staged for commit:\n{status}")
-        except:
-            pass
-        
-        # Configure git user
-        configure_git_user()
-        
-        # Get commit message
-        try:
-            original_commit = repo.commit(f'origin/{main_branch}')
-            commit_msg = f"Config snapshot from {main_branch}\n\nOriginal commit: {original_commit.hexsha}\nDate: {original_commit.committed_datetime}"
-        except:
-            commit_msg = f"Config snapshot from {main_branch}"
-        
-        # Commit the config files
-        logger.info(f"Step 7: Committing config files...")
-        repo.git.commit('-m', commit_msg)
+        # Create new branch
+        logger.info(f"Creating new branch: {new_branch_name}")
+        new_branch = repo.create_head(new_branch_name)
+        new_branch.checkout()
         
         # Push the new branch to remote
-        logger.info(f"Step 8: Pushing config-only branch to remote...")
+        logger.info(f"Pushing config-only branch {new_branch_name} to remote")
         repo.git.push('--set-upstream', 'origin', new_branch_name)
         
         logger.info(f"✅ Successfully created config-only branch {new_branch_name}")
@@ -336,12 +246,9 @@ def create_config_only_branch(
         
     except GitCommandError as e:
         logger.error(f"Git error creating config-only branch {new_branch_name}: {e}")
-        logger.error(f"Git command error details: {str(e)}")
         return False
     except Exception as e:
         logger.error(f"Error creating config-only branch {new_branch_name}: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
         return False
     finally:
         # Cleanup temporary directory
