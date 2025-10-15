@@ -66,7 +66,7 @@
     .commit-hash{font-family:monospace;background:var(--chip);padding:4px 8px;border-radius:6px;font-size:12px}
     .commit-meta{color:var(--muted);font-size:13px;margin-top:4px}
     
-    .env-cert{display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid var(--line)}
+    .env-cert{display:block;padding:16px 0;border-bottom:1px solid var(--line)}
     .env-cert:last-child{border-bottom:none}
     .env-name{font-weight:600;font-size:16px}
     .env-details{color:var(--muted);font-size:13px;margin-top:4px}
@@ -692,9 +692,10 @@
                     ])
                   ] : [
                     e('button', {
-                      className: 'btn success',
+                      className: 'btn',
                       disabled: isLoading,
-                      onClick: () => handleCertify(env)
+                      onClick: () => handleCertify(env),
+                      style: {backgroundColor: '#F3F4F6', color: '#111827', border: '1px solid #D1D5DB'}
                     }, isLoading ? 'Certifying...' : 'Certify')
                   ]
                 ])
