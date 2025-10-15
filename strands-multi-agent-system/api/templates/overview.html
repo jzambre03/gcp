@@ -510,27 +510,10 @@
           e('td', {key: 'actions'}, 
             e('div', {className: 'actions-cell'}, [
               e('button', {
-                key: 'view',
-                className: 'btn',
-                onClick: handleView
-              }, [
-                e('span', {key: 'icon'}, '👁'),
-                e('span', {key: 'text'}, 'View')
-              ]),
-              e('button', {
-                key: 'branch-env',
+                key: 'more',
                 className: 'btn',
                 onClick: handleBranchEnvironment
-              }, [
-                e('span', {key: 'icon'}, '🌿'),
-                e('span', {key: 'text'}, 'Branch & Env')
-              ]),
-              e('button', {
-                key: 'analyze',
-                className: 'btn primary',
-                onClick: handleAnalyze,
-                disabled: isAnalyzing
-              }, isAnalyzing ? 'Analyzing...' : 'Analyze')
+              }, 'More')
             ])
           )
         ]);

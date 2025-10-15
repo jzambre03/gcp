@@ -155,15 +155,29 @@
         return e('div', {className: 'container'}, [
           // Header
           e('div', {className: 'header'}, [
-            e('button', {className: 'btn back-btn', onClick: goBack}, [
-              e('span', null, '←'),
-              'Back to Issues'
+            e('div', {style: {marginBottom: '16px'}}, [
+              e('button', {className: 'btn back-btn', onClick: goBack}, [
+                e('span', null, '←'),
+                'Back to Issues'
+              ])
             ]),
-            e('h1', {className: 'title'}, [
-              e('span', null, '⚙'),
-              `Branch & Environment - ${serviceConfig?.name || 'Service'}`
-            ]),
-            e('p', {className: 'subtitle'}, `Track git branches, deployments, and environment-specific certifications`)
+            e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px'}}, [
+              e('div', null, [
+                e('h1', {className: 'title', style: {marginBottom: '8px'}}, [
+                  e('span', null, '⚙'),
+                  `Branch & Environment - ${serviceConfig?.name || 'Service'}`
+                ]),
+                e('p', {className: 'subtitle'}, `Track git branches, deployments, and environment-specific certifications`)
+              ]),
+              e('button', {
+                className: 'btn',
+                onClick: () => {
+                  // Trigger analysis - you can customize this
+                  window.location.href = `/service/${serviceId}`;
+                },
+                style: {marginLeft: '16px', backgroundColor: '#4B5563', color: 'white', border: '1px solid #4B5563'}
+              }, '▶️ Analyze')
+            ])
           ]),
           
           // Risk banner removed from Overview tab as requested
