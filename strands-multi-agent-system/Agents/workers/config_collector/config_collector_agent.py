@@ -839,10 +839,14 @@ class ConfigCollectorAgent(Agent):
             output_dir.mkdir(parents=True, exist_ok=True)
         
             # Build overview
+            # Calculate total_files: unique files across both branches (drift + removed from golden)
+            total_files = len(drift_files) + len(file_changes.get("removed", []))
+            
             overview = {
+                "total_files": total_files,  # Unique files across both branches
                 "golden_files": len(golden_files),
                 "drift_files": len(drift_files),
-                "files_compared": len(golden_paths),  # ADDED: Total files compared (needed for summary)
+                "files_compared": len(golden_paths),  # Total files scanned (all types)
                 "languages_hint": sorted({
                     f["ext"] for f in drift_files 
                     if f["file_type"] == "code"
