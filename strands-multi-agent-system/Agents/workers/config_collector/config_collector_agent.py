@@ -328,6 +328,10 @@ class ConfigCollectorAgent(Agent):
     Provides async @tool access to diff collection and repository utilities
     using only serializable types (following diff_engine_agent.py pattern).
     """
+    
+    class Config:
+        arbitrary_types_allowed = True  # Allow arbitrary types like git.Repo
+    
     def __init__(self, config: Optional[Any] = None):
         system_prompt = self._get_config_collector_prompt()
         super().__init__(
@@ -341,9 +345,6 @@ class ConfigCollectorAgent(Agent):
             ]
         )
         self.config = config
-    
-    class Config:
-        arbitrary_types_allowed = True  # Allow arbitrary types like git.Repo
     
     def process_task(self, task: 'TaskRequest') -> 'TaskResponse':
         """
@@ -863,7 +864,7 @@ class ConfigCollectorAgent(Agent):
                 "golden_branch": golden_branch,
                 "drift_branch": drift_branch,
                 "timestamp": timestamp,
-                "environment": "production"  # TODO: Make this configurable
+                "environment": environment  # ✅ Fixed: Now uses parameter instead of hardcoded value
             }
         
             # Combine all deltas

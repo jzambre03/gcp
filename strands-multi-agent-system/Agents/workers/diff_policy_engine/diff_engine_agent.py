@@ -1336,7 +1336,8 @@ Always provide clear, actionable insights with specific reasoning for your asses
     @tool
     async def analyze_delta_with_policy(self, 
                                         delta_context: dict,
-                                        environment: str = "production") -> dict:
+                                        environment: str = "production",
+                                        evidence_list: List[Dict[str, Any]] = None) -> dict:
         """
         Analyze a single delta with policy awareness.
         
@@ -1354,6 +1355,7 @@ Always provide clear, actionable insights with specific reasoning for your asses
                 - policy_tag: Pre-evaluated policy tag (invariant_breach, allowed_variance, suspect)
                 - policy_rule: Policy rule name if matched
             environment: Target environment (production, staging, development)
+            evidence_list: Optional list of evidence items from context_bundle (for approval tracking)
             
         Returns:
             Dict with risk_level, verdict, policy_violations, recommendations, confidence, rationale, patch_hint
@@ -1371,9 +1373,10 @@ Always provide clear, actionable insights with specific reasoning for your asses
         # Generate patch hint for this delta
         patch_hint = self._generate_patch_hint(delta_context)
         
-        # Check evidence requirements (Feature #4) - Note: evidence_list would come from context_bundle
-        # For now, we'll use an empty list as evidence checking requires evidence data
-        evidence_list = []  # TODO: Extract from context_bundle when available
+        # Check evidence requirements (Feature #4)
+        # ✅ Fixed: Now accepts evidence_list parameter from context_bundle
+        if evidence_list is None:
+            evidence_list = []
         evidence_check = self._check_evidence_requirements(delta_context, evidence_list)
         
         # Build policy-aware prompt from context-generator's adjudicator.md

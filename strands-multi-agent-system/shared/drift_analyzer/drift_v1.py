@@ -595,6 +595,7 @@ def _tag_with_policy(d: Dict[str, Any], policies: Dict[str, Any]) -> Dict[str, A
 
 # -------- Build deltas & bundle --------
 def _build_config_deltas(conf: Dict[str, Any]) -> List[Dict[str, Any]]:
+    global golden_root, candidate_root  # ✅ Fixed: Access global variables
     deltas = []
     for k, v in (conf.get("added") or {}).items():
         fn, tail = k.split(".",1) if "." in k else (k,"")
@@ -770,6 +771,11 @@ def emit_bundle(out_dir: Path,
                 extra_deltas: List[Dict[str, Any]],
                 per_file_patches: Dict[str, str],
                 policies_path: Optional[Path]) -> Dict[str, Any]:
+    # ✅ Fixed: Initialize global variables needed by helper functions
+    global golden_root, candidate_root
+    golden_root = golden
+    candidate_root = candidate
+    
     policies = _policy_load(policies_path)
     all_deltas = _build_config_deltas(conf_diff) + _build_dep_deltas(dep_diff) + _build_file_presence_deltas(file_changes) + extra_deltas
     
