@@ -380,7 +380,7 @@ class ConfigCollectorAgent(Agent):
             if not repo_url:
                 return TaskResponse(
                     task_id=task.task_id,
-                    status="failed",
+                    status="failure",
                     result={},
                     error="Missing required parameter: repo_url",
                     processing_time_seconds=time.time() - start_time,
@@ -390,7 +390,7 @@ class ConfigCollectorAgent(Agent):
             if not service_id:
                 return TaskResponse(
                     task_id=task.task_id,
-                    status="failed",
+                    status="failure",
                     result={},
                     error="Missing required parameter: service_id",
                     processing_time_seconds=time.time() - start_time,
@@ -409,7 +409,7 @@ class ConfigCollectorAgent(Agent):
             if result.get('status') != 'success':
                 return TaskResponse(
                     task_id=task.task_id,
-                    status="failed",
+                    status="failure",
                     result={},
                     error=result.get('error', 'Unknown error'),
                     processing_time_seconds=time.time() - start_time,
@@ -447,7 +447,7 @@ class ConfigCollectorAgent(Agent):
             logger.exception(f"❌ Config Collector task processing failed: {e}")
             return TaskResponse(
                 task_id=task.task_id,
-                status="failed",
+                status="failure",
                 result={},
                 error=str(e),
                 processing_time_seconds=time.time() - start_time,
@@ -635,11 +635,14 @@ class ConfigCollectorAgent(Agent):
             if not validate_golden_exists(service_id, environment):
                 error_msg = f"❌ No golden branch found for {service_id}/{environment}. Please create golden baseline first."
                 logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg,
-                    "timestamp": datetime.now().isoformat()
-                }
+                return TaskResponse(
+                    task_id=task.task_id,
+                    status="failure",
+                    result={},
+                    error=error_msg,
+                    processing_time_seconds=time.time() - start_time,
+                    metadata={"agent": "config_collector", "phase": "golden_branch_validation"}
+                )
             
             golden_branch = get_active_golden_branch(service_id, environment)
             logger.info(f"✅ Golden branch found: {golden_branch}")
@@ -658,11 +661,14 @@ class ConfigCollectorAgent(Agent):
             if not success:
                 error_msg = f"❌ Failed to create drift branch {drift_branch}"
                 logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "error": error_msg,
-                    "timestamp": datetime.now().isoformat()
-                }
+                return TaskResponse(
+                    task_id=task.task_id,
+                    status="failure",
+                    result={},
+                    error=error_msg,
+                    processing_time_seconds=time.time() - start_time,
+                    metadata={"agent": "config_collector", "phase": "drift_branch_creation"}
+                )
             
             # 3. Add drift branch to tracker
             add_drift_branch(service_id, environment, drift_branch)
@@ -671,11 +677,14 @@ class ConfigCollectorAgent(Agent):
         except Exception as e:
             error_msg = f"❌ Failed to validate/create branches: {e}"
             logger.error(error_msg)
-            return {
-                "status": "error",
-                "error": error_msg,
-                "timestamp": datetime.now().isoformat()
-            }
+            return TaskResponse(
+                task_id=task.task_id,
+                status="failure",
+                result={},
+                error=error_msg,
+                processing_time_seconds=time.time() - start_time,
+                metadata={"agent": "config_collector", "phase": "branch_validation_creation"}
+            )
         
         logger.info(f"\n✅ Phase 0 Complete!")
         logger.info(f"   Golden Branch: {golden_branch}")
