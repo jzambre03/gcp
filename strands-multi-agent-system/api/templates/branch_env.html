@@ -156,9 +156,9 @@
           // Header
           e('div', {className: 'header'}, [
             e('div', {style: {marginBottom: '16px'}}, [
-              e('button', {className: 'btn back-btn', onClick: goBack}, [
-                e('span', null, '←'),
-                'Back to Issues'
+            e('button', {className: 'btn back-btn', onClick: goBack}, [
+              e('span', null, '←'),
+              'Back to Issues'
               ])
             ]),
             e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px'}}, [
@@ -378,8 +378,8 @@
                 e('div', {className: 'status-value'}, [
                   e('span', null, 'BR'),
                   e('span', {className: 'mono'}, serviceConfig.main_branch || 'main')
-                ])
-              ]),
+              ])
+            ]),
               e('div', {className: 'status-item'}, [
                 e('span', {className: 'status-label'}, 'Environments:'),
                 e('div', {className: 'status-value'}, [
@@ -443,10 +443,10 @@
                           onMouseOut: (e) => e.target.style.textDecoration = 'none'
                         }, '🔗 View in GitLab'),
                         e('span', {style: {color: 'var(--muted)', fontSize: '12px'}}, 'Opens in new tab')
-                      ])
-                    ])
-                  ]),
-                  
+              ])
+            ])
+          ]),
+          
                   // Branch Statistics
                   e('div', {style: {display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px'}}, [
                     e('div', {style: {background: 'var(--chip)', padding: '16px', borderRadius: '8px'}}, [
@@ -681,9 +681,9 @@
                   ),
                   isCertified && e('span', {className: 'badge success'}, [
                     e('span', null, '✓'),
-                    'Certified'
-                  ])
-                ]),
+                'Certified'
+            ])
+          ]),
                 e('div', {style: {display: 'flex', gap: '8px'}}, [
                   isCertified ? [
                     e('button', {

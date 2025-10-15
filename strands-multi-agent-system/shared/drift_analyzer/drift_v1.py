@@ -79,7 +79,10 @@ def _tree(root: Path) -> List[str]:
     out: List[str] = []
     for p in root.rglob("*"):
         if p.is_file():
-            out.append(str(p.relative_to(root)).replace("\\","/"))
+            rel_path = str(p.relative_to(root)).replace("\\","/")
+            # Skip .git directory and hidden files
+            if not rel_path.startswith('.git/') and not rel_path.startswith('.'):
+                out.append(rel_path)
     return sorted(out)
 
 def _classify(root: Path, rels: List[str]) -> List[Dict[str, Any]]:

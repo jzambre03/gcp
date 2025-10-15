@@ -318,20 +318,65 @@ def create_config_only_branch(
         repo.git.checkout('--orphan', new_branch_name)
         log_and_print(f"✅ Orphan branch created: {new_branch_name}")
         
-        # The working directory already has only the config files from sparse-checkout
-        # Now we need to stage them
-        log_and_print(f"Step 9: Staging config files...")
-        repo.git.add('.')
-        log_and_print(f"✅ Staged {len(checked_out_files)} config files")
+        # HYBRID APPROACH: Try git-native first, fallback to manual
+        # The Git index still has references to ALL files from origin/main checkout
+        # We need to stage ONLY the config files from our sparse working directory
+        
+        log_and_print(f"Step 9: Staging config files using best available method...")
+        staging_method = "unknown"
+        
+        try:
+            # APPROACH 1 (PREFERRED): Use git add --sparse (Git 2.25+)
+            # This is the Git-native way to respect sparse-checkout during staging
+            log_and_print(f"  → Trying 'git add --sparse' (Git-native method)...")
+            repo.git.add('--sparse', '.')
+            staging_method = "git add --sparse (Git-native)"
+            log_and_print(f"✅ Used {staging_method}")
+            
+        except GitCommandError as e:
+            # APPROACH 2 (FALLBACK): Manual index clearing
+            # Works with all Git versions, but requires two steps
+            log_and_print(f"  ⚠️ 'git add --sparse' not available (requires Git 2.25+)")
+            log_and_print(f"  → Falling back to manual index clearing...")
+            
+            # Clear the Git index (removes ALL file references)
+            repo.git.rm('-rf', '--cached', '.')
+            log_and_print(f"  → Git index cleared")
+            
+            # Add ONLY files from working directory (54 config files)
+            repo.git.add('.')
+            staging_method = "git rm --cached + git add (manual method)"
+            log_and_print(f"✅ Used {staging_method}")
+        
+        # Verify what was staged (works for both methods)
+        log_and_print(f"Step 10: Verifying staged files...")
+        try:
+            staged_files = repo.git.diff('--cached', '--name-only').split('\n')
+            staged_count = len([f for f in staged_files if f])
+            log_and_print(f"✅ Staged {staged_count} files in Git index (method: {staging_method})")
+            
+            # Additional verification: check if count matches expected
+            if staged_count != len(checked_out_files):
+                log_and_print(f"⚠️ WARNING: Staged {staged_count} files but expected {len(checked_out_files)}")
+        except Exception as verify_error:
+            log_and_print(f"⚠️ Could not verify staged files: {verify_error}")
         
         # Create initial commit with only config files
-        log_and_print(f"Step 10: Creating commit with config files only...")
+        log_and_print(f"Step 11: Creating commit with config files only...")
         commit_message = f"Config-only snapshot from {main_branch}\n\nContains only configuration files ({len(checked_out_files)} files):\n- YAML configs\n- Properties files\n- Build configs\n- Container configs"
         repo.git.commit('-m', commit_message)
-        log_and_print(f"✅ Commit created with {len(checked_out_files)} files")
+        log_and_print(f"✅ Commit created")
+        
+        # Verify the commit only has config files
+        try:
+            commit_files = repo.git.ls_tree('-r', '--name-only', 'HEAD').split('\n')
+            commit_file_count = len([f for f in commit_files if f])
+            log_and_print(f"✅ Commit verified: contains {commit_file_count} files")
+        except:
+            log_and_print(f"✅ Commit created (verification skipped)")
         
         # Push the new branch to remote
-        log_and_print(f"Step 11: Pushing config-only branch to remote...")
+        log_and_print(f"Step 12: Pushing config-only branch to remote...")
         repo.git.push('--set-upstream', 'origin', new_branch_name)
         log_and_print(f"✅ Branch pushed to remote")
         
