@@ -385,66 +385,7 @@
         };
         
         return e('div', {className: 'grid grid-2'}, [
-          // Environment Status Overview (moved to left)
-          e('div', {className: 'card'}, [
-            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Environment Certification Status'),
-            
-            error ? e('div', {style: {color: 'var(--red)', padding: '12px', background: 'var(--red-bg)', borderRadius: '8px', marginBottom: '16px'}}, 
-              `❌ ${error}`
-            ) : null,
-            
-            loading ? e('div', {style: {textAlign: 'center', padding: '20px', color: 'var(--muted)'}}, 'Loading environment data...') :
-            (() => {
-              // Get environments from service config (dynamic, no hardcoded values)
-              const environments = serviceConfig?.environments || [];
-              
-              if (environments.length === 0) {
-                return e('div', {style: {textAlign: 'center', padding: '40px 20px', color: 'var(--muted)'}}, [
-                  e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '⚙'),
-                  e('div', {style: {fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}, 'No Environments Configured'),
-                  e('div', {style: {fontSize: '14px'}}, 'Check service configuration')
-                ]);
-              }
-              
-              return environments.map(env => {
-                const status = branchStatus[env] || {};
-                const hasGolden = status.active_golden_branch;
-                const goldenCount = status.total_golden || 0;
-                const driftCount = status.total_drift || 0;
-                const isCertified = hasGolden;
-                
-                return e('div', {
-                  key: env, 
-                  className: 'env-cert',
-                  style: {cursor: isCertified ? 'pointer' : 'default', transition: 'all 0.2s'},
-                  onClick: () => isCertified && handleEnvClick(env)
-                }, [
-                  e('div', null, [
-                    e('div', {className: 'env-name', style: {color: getEnvironmentColor(env)}}, 
-                      getEnvironmentDisplayName(env)
-                    ),
-                    e('div', {className: 'env-details'}, 
-                      `Golden: ${hasGolden || 'None'}`
-                    ),
-                    e('div', {className: 'env-details'}, 
-                      `${goldenCount} golden, ${driftCount} drift branches`
-                    ),
-                    isCertified && e('div', {className: 'env-details', style: {color: 'var(--muted)', fontSize: '12px', marginTop: '4px'}}, 
-                      'Click to view details →'
-                    )
-                  ]),
-                  e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
-                    isCertified && e('span', {className: 'badge success'}, [
-                      e('span', null, '✓'),
-                      'Certified'
-                    ])
-                  ])
-                ]);
-              });
-            })()
-          ]),
-          
-          // Service Overview Card (moved to right)
+          // Service Overview Card (moved to left)
           e('div', {className: 'card'}, [
             e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Service Overview'),
             
@@ -498,6 +439,62 @@
             ] : e('div', {style: {textAlign: 'center', padding: '20px', color: 'var(--muted)'}}, 'Service not found')
           ]),
           
+          // Environment Status Overview (moved to right)
+          e('div', {className: 'card'}, [
+            e('h3', {style: {margin: '0 0 20px 0', fontSize: '18px'}}, 'Environment Certification Status'),
+            
+            error ? e('div', {style: {color: 'var(--red)', padding: '12px', background: 'var(--red-bg)', borderRadius: '8px', marginBottom: '16px'}}, 
+              `❌ ${error}`
+            ) : null,
+            
+            loading ? e('div', {style: {textAlign: 'center', padding: '20px', color: 'var(--muted)'}}, 'Loading environment data...') :
+            (() => {
+              // Get environments from service config (dynamic, no hardcoded values)
+              const environments = serviceConfig?.environments || [];
+              
+              if (environments.length === 0) {
+                return e('div', {style: {textAlign: 'center', padding: '40px 20px', color: 'var(--muted)'}}, [
+                  e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '⚙'),
+                  e('div', {style: {fontSize: '16px', fontWeight: '600', marginBottom: '8px'}}, 'No Environments Configured'),
+                  e('div', {style: {fontSize: '14px'}}, 'Check service configuration')
+                ]);
+              }
+              
+              return environments.map(env => {
+                const status = branchStatus[env] || {};
+                const hasGolden = status.active_golden_branch;
+                const goldenCount = status.total_golden || 0;
+                const driftCount = status.total_drift || 0;
+                const isCertified = hasGolden;
+                
+                return e('div', {
+                  key: env, 
+                  className: 'env-cert',
+                  style: {cursor: isCertified ? 'pointer' : 'default', transition: 'all 0.2s'},
+                  onClick: () => isCertified && handleEnvClick(env)
+                }, [
+                  e('div', null, [
+                    e('div', {className: 'env-name', style: {color: getEnvironmentColor(env)}}, 
+                      getEnvironmentDisplayName(env)
+                    ),
+                    e('div', {className: 'env-details'}, 
+                      `Golden: ${hasGolden || 'None'}`
+                    ),
+                    isCertified && e('div', {className: 'env-details', style: {color: 'var(--muted)', fontSize: '12px', marginTop: '4px'}}, 
+                      'Click to view details →'
+                    )
+                  ]),
+                  e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
+                    isCertified && e('span', {className: 'badge success'}, [
+                      e('span', null, '✓'),
+                      'Certified'
+                    ])
+                  ])
+                ]);
+              });
+            })()
+          ]),
+          
           // Branch Details Popup
           showBranchDetails && selectedEnv && e('div', {className: 'modal-overlay', onClick: closeBranchDetails}, [
             e('div', {className: 'modal', onClick: (e) => e.stopPropagation()}, [
@@ -542,18 +539,6 @@
             ])
           ]),
           
-                  // Branch Statistics
-                  e('div', {style: {display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px'}}, [
-                    e('div', {style: {background: 'var(--chip)', padding: '16px', borderRadius: '8px'}}, [
-                      e('div', {style: {fontSize: '24px', fontWeight: '700', color: 'var(--green)', marginBottom: '4px'}}, goldenBranches.length),
-                      e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 'Golden Branches')
-                    ]),
-                    e('div', {style: {background: 'var(--chip)', padding: '16px', borderRadius: '8px'}}, [
-                      e('div', {style: {fontSize: '24px', fontWeight: '700', color: 'var(--med)', marginBottom: '4px'}}, driftBranches.length),
-                      e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 'Drift Branches')
-                    ])
-                  ]),
-                  
                   // Recent Branches
                   e('div', {style: {marginBottom: '16px'}}, [
                     e('h4', {style: {margin: '0 0 12px 0'}}, 'Recent Drift Branches'),
