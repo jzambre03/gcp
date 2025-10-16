@@ -73,6 +73,60 @@
     
     .deployment-actions{margin-top:12px;display:flex;gap:8px}
     
+    /* Drift Analysis Tab Styles (from index.html) */
+    .stats{display:grid;grid-template-columns:repeat(7,1fr);gap:12px}
+    .stat{text-align:center;padding:20px 16px;min-height:100px;display:flex;flex-direction:column;justify-content:center}
+    .stat .val{font-size:28px;font-weight:700;line-height:1.1;margin-bottom:4px}
+    .stat .lbl{font-size:14px;color:var(--muted);font-weight:600;line-height:1.2}
+    .stat.clickable{transition: all 0.2s ease; transform: scale(1); cursor:pointer;}
+    .stat.clickable:hover{transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.15);}
+    
+    .issue-card{padding: 0;}
+    .issue-header{display:flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px; cursor: pointer; border-radius: 16px; transition: background-color 0.2s;}
+    .issue-header:hover{background-color: #FAFAFA;}
+    .issue-summary{flex: 1;}
+    .issue-details{padding: 16px; display: flex; flex-direction: column; gap: 16px; border-top: 1px solid var(--line);}
+    .details-actions{display: flex; justify-content: flex-end; gap: 8px;}
+    
+    .issue-meta{display: flex; flex-wrap: wrap; align-items:center; gap:8px; margin-top: 8px;}
+    .churn-pill{font-weight: 600; font-size: 12px;}
+    .churn-pill .add{color: #00796B;}
+    .churn-pill .del{color: #C62828;}
+    
+    .pii-notice { color: #B45309; background: #FFFBEB; border-color: #FDE68A; }
+    
+    .insight-card{background: #FEFCE8; border-left: 4px solid #FBBF24; padding: 12px; border-radius: 8px;}
+    .insight-card .heading{font-weight: 700; font-size: 1em; color: #92400E; margin-bottom: 4px;}
+    
+    .diff-view{border:1px solid var(--line);border-radius:12px;max-height:350px;overflow:auto;}
+    .diff-line{padding: 4px 12px; white-space:pre-wrap; border-left: 3px solid transparent; font-family:monospace; font-size:13px;}
+    .diff-line.hdr{background:#F3F4F6; color: var(--muted); font-style: italic;}
+    .diff-line.add{background:#E0F2F1; border-left-color: #00796B;}
+    .diff-line.del{background:#FFEBEE; border-left-color: #C62828;}
+    
+    .toggle-btn{
+        background: var(--chip);
+        border: 1px solid var(--line);
+        color: var(--muted);
+        cursor: pointer;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        font-size: 20px;
+        line-height: 26px;
+        text-align: center;
+        transition: background-color 0.2s, transform 0.2s;
+        font-weight: 500;
+    }
+    .toggle-btn:hover{ background-color: #E5E7EB; }
+    .toggle-btn.open{ transform: rotate(45deg); }
+    
+    .grid-issues{display:grid;gap:16px}
+    .section-title{font-size: 1.5em; font-weight: 700; margin-bottom: 16px; padding-bottom: 8px;}
+    .success-banner{background:#ECFDF5;border:1px solid #059669;color:#065F46;padding:16px;border-radius:12px;margin-bottom:16px;}
+    .spinner{display:inline-block;width:40px;height:40px;border:4px solid var(--line);border-top-color:var(--vz-red);border-radius:50%;animation:spin 1s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    
     /* Modal styles */
     .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:1000}
     .modal{background:white;border-radius:16px;padding:24px;max-width:500px;width:90%;box-shadow:var(--shadow)}
@@ -481,11 +535,424 @@
         ]);
       }
       
+      // ============================================================================
+      // DRIFT ANALYSIS TAB HELPER COMPONENTS (Copied from index.html)
+      // ============================================================================
+      
+      const MASKING_PATTERNS = [
+          { regex: /(PASSWORD|SECRET|KEY|TOKEN)\s*[:=]\s*([^\s]+)/gi, replacement: "$1: '********'" },
+          { regex: /(AES:)[^\s]+/gi, replacement: "$1********" }
+      ];
+
+      function maskPII(text) {
+          if (typeof text !== 'string') return '';
+          let maskedText = text;
+          MASKING_PATTERNS.forEach(({ regex, replacement }) => { maskedText = maskedText.replace(regex, replacement); });
+          return maskedText;
+      }
+
+      function hasPII(text) {
+          if (typeof text !== 'string') return false;
+          return MASKING_PATTERNS.some(({ regex }) => { regex.lastIndex = 0; return regex.test(text); });
+      }
+
+      function getChangeType(item) {
+        if (item.drift_category) return item.drift_category;
+        const { file, why = '' } = item;
+        if (why.includes('dependency')) return 'Dependency';
+        if (file.endsWith('.yml') || file.endsWith('.properties') || why.includes('connection string')) return 'Configuration';
+        if (file.endsWith('pom.xml') || file.startsWith('helm/')) return 'Build & Deployment';
+        if (why.includes('probe') || why.includes('security') || why.includes('password')) return 'Security & Health';
+        if (file.endsWith('.java')) return 'Code Logic';
+        return 'General';
+      }
+
+      function generateInsight(item) {
+          if (item.ai_review_assistant && item.ai_review_assistant.potential_risk && item.ai_review_assistant.suggested_action) {
+              return e('div', {className: 'insight-card'}, [
+                e('div', {className: 'heading'}, '💡 AI Review Assistant'),
+                e('p', {style: {margin: 0}}, [ 
+                  e('strong', null, 'Potential Risk: '), 
+                  maskPII(item.ai_review_assistant.potential_risk), 
+                  e('br'), 
+                  e('strong', null, 'Suggested Action: '), 
+                  maskPII(item.ai_review_assistant.suggested_action) 
+                ])
+              ]);
+          }
+          const { why = '', remediation = {} } = item;
+          if (why) {
+              const remediationText = remediation.snippet || 
+                                     (remediation.steps && Array.isArray(remediation.steps) 
+                                       ? remediation.steps.join('; ') 
+                                       : 'Review and verify this configuration change.');
+              return e('div', {className: 'insight-card'}, [
+                e('div', {className: 'heading'}, '💡 AI Review Assistant'),
+                e('p', {style: {margin: 0}}, [ 
+                  e('strong', null, 'Potential Risk: '), maskPII(why), 
+                  e('br'), 
+                  e('strong', null, 'Suggested Action: '), maskPII(remediationText) 
+                ])
+              ]);
+          }
+          return e('div', {className: 'insight-card'}, [
+            e('div', {className: 'heading'}, '💡 AI Review Assistant'),
+            e('p', {style: {margin: 0}}, [ 
+              e('strong', null, 'Potential Risk: '), 'N/A', 
+              e('br'), 
+              e('strong', null, 'Suggested Action: '), 'Review the change details below.' 
+            ])
+          ]);
+      }
+
+      const PIINotice = () => e('span', {className: 'chip pii-notice'}, '🔒 PII Masked');
+      
+      const LocatorPill = ({loc}) => {
+          if(!loc) return null;
+          let text = '';
+          if (loc.type === 'unidiff' && loc.old_start) { text = `Lines ${loc.old_start} → ${loc.new_start || loc.old_start}`; } 
+          else if (loc.line_start) { text = `Line ${loc.line_start}`; } 
+          else { text = loc.type || 'General'; }
+          return e('span',{className:'chip mono'}, text);
+      };
+
+      const Churn = ({ loc }) => {
+        if (loc.type !== 'unidiff' || loc.old_lines === undefined) return null;
+        const netChange = (loc.new_lines || 0) - (loc.old_lines || 0);
+        const additions = Math.max(0, netChange);
+        const deletions = Math.max(0, -netChange);
+        return e('span', {className: 'chip mono churn-pill'}, [ 
+          e('span', {className: 'add'}, `+${additions} `), 
+          e('span', {className: 'del'}, `-${deletions}`) 
+        ]);
+      };
+      
+      const CodeHunkIssue = ({ item }) => {
+        const uiPatch = React.useMemo(() => item.remediation?.patch_hint?.replace(/\\n/g, '\n') || '', [item]);
+        const lines = uiPatch.split('\n').filter(ln => !ln.startsWith('---') && !ln.startsWith('+++') && !ln.startsWith('diff --git'));
+        return e('div', {className: 'diff-view mono'}, lines.map((ln, i) => 
+          e('div', {
+            key: i, 
+            className: `diff-line ${ln.startsWith('@@')?'hdr':ln.startsWith('+')?'add':ln.startsWith('-')?'del':'ctx'}`
+          }, maskPII(ln))
+        ));
+      };
+
+      const ConfigChangeIssue = ({ item }) => {
+        const { old = null, new: newVal = null, remediation = {}, locator = {} } = item;
+        const elements = [];
+        
+        const showSmartDiff = () => {
+          const maskedOld = maskPII(String(old || ''));
+          const maskedNew = maskPII(String(newVal || ''));
+          const isLargeBlock = maskedOld.length > 200 || maskedNew.length > 200;
+          
+          if (isLargeBlock && locator.value) {
+            return e('div', { key: 'change' }, [
+              e('div', { style: {marginBottom: '8px', color: '#666', fontSize: '13px'} }, 
+                `📍 Changed field: ${locator.value}`
+              ),
+              e('div', { className: 'diff-view mono' }, [
+                e('div', { key: 'old', className: 'diff-line del' }, `- ${maskedOld.substring(0, 150)}...`),
+                e('div', { key: 'new', className: 'diff-line add' }, `+ ${maskedNew.substring(0, 150)}...`)
+              ])
+            ]);
+          } else {
+            return e('div', { key: 'change', className: 'diff-view mono' }, [
+              maskedOld && e('div', { key: 'old', className: 'diff-line del' }, `- ${maskedOld}`),
+              maskedNew && e('div', { key: 'new', className: 'diff-line add' }, `+ ${maskedNew}`)
+            ].filter(Boolean));
+          }
+        };
+        
+        if (old !== null || newVal !== null) {
+          elements.push(showSmartDiff());
+        }
+        
+        if (remediation.steps && Array.isArray(remediation.steps) && remediation.steps.length > 0) {
+          elements.push(
+            e('div', { key: 'steps', style: {marginTop: '12px'} }, [
+              e('strong', null, '🔧 Remediation Steps:'),
+              e('ol', { style: {margin: '8px 0', paddingLeft: '20px'} }, 
+                remediation.steps.map((step, i) => 
+                  e('li', {key: i, style: {marginBottom: '4px'}}, maskPII(step))
+                )
+              )
+            ])
+          );
+        }
+        
+        return e('div', null, elements);
+      };
+      
+      function Issue({item, bucket}) {
+        const [open, setOpen] = React.useState(false);
+        const patch = item.remediation?.patch_hint || '';
+        const itemContainsPII = React.useMemo(() => hasPII(item.why) || hasPII(item.remediation?.snippet) || hasPII(item.remediation?.patch_hint), [item]);
+
+        function downloadPatch(){ 
+          if(!patch) return; 
+          const blob=new Blob([patch],{type:'text/plain'}); 
+          const a=document.createElement('a'); 
+          a.href=URL.createObjectURL(blob); 
+          a.download=(item.id || 'issue')+'.patch'; 
+          a.click(); 
+          URL.revokeObjectURL(a.href); 
+        }
+        
+        function downloadJSON(){ 
+          const blob=new Blob([JSON.stringify(item,null,2)],{type:'application/json'}); 
+          const a=document.createElement('a'); 
+          a.href=URL.createObjectURL(blob); 
+          a.download=(item.id || 'issue')+'.json'; 
+          a.click(); 
+          URL.revokeObjectURL(a.href); 
+        }
+        
+        const DetailsView = item.remediation?.patch_hint ? CodeHunkIssue : item.remediation?.snippet ? ConfigChangeIssue : () => e('div', {className: 'muted'}, 'No detailed changes available.');
+        const riskVar = bucket === 'high' ? 'vz-red' : (bucket === 'medium' ? 'med' : 'low');
+
+        return e('div', {className: 'card issue-card'}, [
+            e('div', { className: 'issue-header', onClick: () => setOpen(!open) }, [
+                e('div', { className: 'issue-summary' }, [
+                    e('p', {className: 'title'}, maskPII(item.why || item.headline)),
+                    e('div', {className: 'issue-meta'}, [
+                        e('span', {className:'chip', style:{backgroundColor: `var(--${riskVar})`, color: 'white'}}, String(bucket).toUpperCase()),
+                        e('span', {className: 'chip'}, getChangeType(item)),
+                        e(Churn, {loc: item.locator}),
+                        itemContainsPII && e(PIINotice),
+                        e('span', {className: 'mono muted'}, item.file)
+                    ]),
+                ]),
+                e('button', {className: `toggle-btn ${open ? 'open': ''}`}, '+')
+            ]),
+            open && e('div', { className: 'issue-details' }, [
+                generateInsight(item),
+                e(DetailsView, {item}),
+                e('div', {className: 'details-actions'}, [
+                    e('button', {className: 'btn', onClick: downloadJSON}, 'Download JSON'),
+                    e('button', {className: 'btn primary', onClick: downloadPatch, disabled: !patch}, 'Download Patch')
+                ])
+            ])
+        ]);
+      }
+      
+      const AllowedVarianceIssue = ({item}) => e('div', {className:'card', style:{padding:'16px'}}, [
+        e('div', {style:{display: 'flex', alignItems: 'center', gap:'12px', marginBottom: '8px'}}, [
+            e('div', {className:'chip', style:{background:'#F3F4F6', color:'#6B7280', border:'1px solid #D1D5DB'}}, 'ALLOWED'),
+            e('p', {className: 'title', style:{margin:0, flex: 1}}, item.rationale || item.why)
+        ]),
+        e('div', {className: 'issue-meta', style:{borderTop: '1px solid var(--line)', paddingTop: '8px'}}, [
+            e(LocatorPill, {loc: item.locator}),
+            e('span', {className: 'mono muted'}, item.file)
+        ])
+      ]);
+
+      function groupDriftsByFile(drifts) {
+        const grouped = {};
+        drifts.forEach(drift => {
+          const file = drift.file;
+          if (!grouped[file]) {
+            grouped[file] = [];
+          }
+          grouped[file].push(drift);
+        });
+        return grouped;
+      }
+
+      function sortFilesByRisk(fileGroups) {
+        const riskPriority = { high: 4, medium: 3, low: 2, allowed: 1 };
+        
+        return Object.keys(fileGroups).sort((fileNameA, fileNameB) => {
+          const driftsA = fileGroups[fileNameA];
+          const driftsB = fileGroups[fileNameB];
+          const maxRiskA = Math.max(...driftsA.map(d => riskPriority[d._riskLevel] || 0));
+          const maxRiskB = Math.max(...driftsB.map(d => riskPriority[d._riskLevel] || 0));
+          
+          if (maxRiskA !== maxRiskB) {
+            return maxRiskB - maxRiskA;
+          }
+          return fileNameA.localeCompare(fileNameB);
+        });
+      }
+
+      function FileGroupAll({fileName, drifts}) {
+        const [isExpanded, setIsExpanded] = React.useState(false);
+        
+        const riskCounts = {
+          high: drifts.filter(d => d._riskLevel === 'high').length,
+          medium: drifts.filter(d => d._riskLevel === 'medium').length,
+          low: drifts.filter(d => d._riskLevel === 'low').length,
+          allowed: drifts.filter(d => d._riskLevel === 'allowed').length
+        };
+        
+        let fileRiskColor, fileRiskIcon, fileRiskLabel;
+        if (riskCounts.high > 0) {
+          fileRiskColor = 'var(--vz-red)';
+          fileRiskIcon = '🔴';
+          fileRiskLabel = 'High Risk';
+        } else if (riskCounts.medium > 0) {
+          fileRiskColor = 'var(--med)';
+          fileRiskIcon = '🟠';
+          fileRiskLabel = 'Medium Risk';
+        } else if (riskCounts.low > 0) {
+          fileRiskColor = 'var(--low)';
+          fileRiskIcon = '🟢';
+          fileRiskLabel = 'Low Risk';
+        } else {
+          fileRiskColor = 'var(--allowed)';
+          fileRiskIcon = '✅';
+          fileRiskLabel = 'Allowed Variance';
+        }
+        
+        const totalDrifts = drifts.length;
+        const riskSummary = [
+          riskCounts.high > 0 && `${riskCounts.high} high`,
+          riskCounts.medium > 0 && `${riskCounts.medium} medium`,
+          riskCounts.low > 0 && `${riskCounts.low} low`,
+          riskCounts.allowed > 0 && `${riskCounts.allowed} allowed`
+        ].filter(Boolean).join(', ');
+        
+        return e('div', {className: 'file-group-card', style:{
+          border: `2px solid ${fileRiskColor}`,
+          borderRadius: '12px',
+          marginBottom: '20px',
+          overflow: 'hidden'
+        }}, [
+          e('div', {
+            className: 'file-header',
+            style: {
+              backgroundColor: fileRiskColor + '15',
+              padding: '16px 20px',
+              cursor: 'pointer',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              borderBottom: isExpanded ? `1px solid ${fileRiskColor}40` : 'none'
+            },
+            onClick: () => setIsExpanded(!isExpanded)
+          }, [
+            e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
+              e('span', {style: {fontSize: '20px'}}, fileRiskIcon),
+              e('div', null, [
+                e('div', {style: {fontWeight: '600', fontSize: '16px', color: fileRiskColor}}, fileName),
+                e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
+                  `${totalDrifts} drift${totalDrifts !== 1 ? 's' : ''} • ${riskSummary}`)
+              ])
+            ]),
+            e('div', {style: {fontSize: '24px', color: fileRiskColor}}, isExpanded ? '−' : '+')
+          ]),
+          
+          isExpanded && e('div', {style: {padding: '0'}}, [
+            riskCounts.high > 0 && e('div', {style: {marginBottom: '16px'}}, [
+              e('h3', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--vz-red)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🔴 High Risk'),
+              e('div', {className: 'grid-issues'}, drifts.filter(d => d._riskLevel === 'high').map((drift, i) => 
+                e(Issue, {key: i, item: drift, bucket: 'high'})
+              ))
+            ]),
+            riskCounts.medium > 0 && e('div', {style: {marginBottom: '16px'}}, [
+              e('h3', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--med)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🟠 Medium Risk'),
+              e('div', {className: 'grid-issues'}, drifts.filter(d => d._riskLevel === 'medium').map((drift, i) => 
+                e(Issue, {key: i, item: drift, bucket: 'medium'})
+              ))
+            ]),
+            riskCounts.low > 0 && e('div', {style: {marginBottom: '16px'}}, [
+              e('h3', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--low)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🟢 Low Risk'),
+              e('div', {className: 'grid-issues'}, drifts.filter(d => d._riskLevel === 'low').map((drift, i) => 
+                e(Issue, {key: i, item: drift, bucket: 'low'})
+              ))
+            ]),
+            riskCounts.allowed > 0 && e('div', {style: {marginBottom: '16px'}}, [
+              e('h3', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--allowed)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '✅ Allowed Variance'),
+              e('div', {className: 'grid-issues'}, drifts.filter(d => d._riskLevel === 'allowed').map((drift, i) => 
+                e(AllowedVarianceIssue, {key: i, item: drift, bucket: 'allowed'})
+              ))
+            ])
+          ])
+        ]);
+      }
+
+      function AllDriftsByFile({data}) {
+        if (!data) return null;
+        const allDrifts = [
+          ...(data.high || []).map(d => ({...d, _riskLevel: 'high'})),
+          ...(data.medium || []).map(d => ({...d, _riskLevel: 'medium'})),
+          ...(data.low || []).map(d => ({...d, _riskLevel: 'low'})),
+          ...(data.allowed_variance || []).map(d => ({...d, _riskLevel: 'allowed'}))
+        ];
+        const fileGroups = groupDriftsByFile(allDrifts);
+        const fileNames = sortFilesByRisk(fileGroups);
+        
+        return e('div', null, [
+          e('h2', {className: 'section-title', style:{color: '#333', borderBottom: '2px solid #333'}}, 
+            '📁 All Drifts by File'),
+          e('div', {style: {marginTop: '16px'}}, fileNames.map(fileName => 
+            e(FileGroupAll, {key: fileName, fileName, drifts: fileGroups[fileName]})
+          ))
+        ]);
+      }
+
+      function Bucket({title, items, kind, riskColor, Component}){ 
+        if (!items || items.length === 0) return null;
+        const itemsWithRisk = items.map(item => ({...item, _riskLevel: kind}));
+        const fileGroups = groupDriftsByFile(itemsWithRisk);
+        const fileNames = sortFilesByRisk(fileGroups);
+        
+        return e('div',null, [
+          e('h2', {className: 'section-title', style:{color: riskColor, borderBottom: `2px solid ${riskColor}`}}, title),
+          e('div', {style: {marginTop: '16px'}}, fileNames.map(fileName => {
+            const fileDrifts = fileGroups[fileName];
+            const [isExpanded, setIsExpanded] = React.useState(false);
+            
+            return e('div', {key: fileName, className: 'file-group-card', style:{
+              border: `2px solid ${riskColor}`,
+              borderRadius: '12px',
+              marginBottom: '20px',
+              overflow: 'hidden'
+            }}, [
+              e('div', {
+                style: {
+                  backgroundColor: riskColor + '15',
+                  padding: '16px 20px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderBottom: isExpanded ? `1px solid ${riskColor}40` : 'none'
+                },
+                onClick: () => setIsExpanded(!isExpanded)
+              }, [
+                e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
+                  e('span', {style: {fontSize: '20px'}}, 
+                    kind === 'high' ? '🔴' : kind === 'medium' ? '🟠' : kind === 'low' ? '🟢' : '✅'),
+                  e('div', null, [
+                    e('div', {style: {fontWeight: '600', fontSize: '16px', color: riskColor}}, fileName),
+                    e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
+                      `${fileDrifts.length} drift${fileDrifts.length !== 1 ? 's' : ''}`)
+                  ])
+                ]),
+                e('div', {style: {fontSize: '24px', color: riskColor}}, isExpanded ? '−' : '+')
+              ]),
+              
+              isExpanded && e('div', {style: {padding: '0'}}, [
+                e('div', {className: 'grid-issues'}, fileDrifts.map((drift, i) => 
+                  e(Component, {key: i, item: drift, bucket: kind})
+                ))
+              ])
+            ]);
+          }))
+        ]); 
+      }
+      
+      // ============================================================================
+      // END OF HELPER COMPONENTS
+      // ============================================================================
+      
       function DeploymentTab({serviceId, currentEnvironment}) {
         const [driftData, setDriftData] = React.useState(null);
         const [loading, setLoading] = React.useState(true);
         const [error, setError] = React.useState(null);
-        const [selectedCategory, setSelectedCategory] = React.useState('all');
+        const [activeFilter, setActiveFilter] = React.useState('all');
         
         // Load drift analysis data
         React.useEffect(() => {
@@ -513,32 +980,30 @@
           loadDriftData();
         }, [serviceId]);
         
-        // Get risk color
-        const getRiskColor = (category) => {
-          const colors = {
-            'high': 'var(--red)',
-            'medium': 'var(--yellow)',
-            'low': 'var(--blue)',
-            'allowed_variance': 'var(--green)'
+        // Filter functions
+        function handleFilterClick(filter) {
+          setActiveFilter(activeFilter === filter ? 'all' : filter);
+        }
+
+        function getFilteredData() {
+          if (!driftData || activeFilter === 'all') return driftData;
+          
+          const filtered = {
+            summary: driftData.summary,
+            high: activeFilter === 'high' ? driftData.high : [],
+            medium: activeFilter === 'medium' ? driftData.medium : [],
+            low: activeFilter === 'low' ? driftData.low : [],
+            allowed_variance: activeFilter === 'allowed' ? driftData.allowed_variance : []
           };
-          return colors[category] || 'var(--muted)';
-        };
-        
-        // Get risk badge
-        const getRiskBadge = (category) => {
-          const badges = {
-            'high': { className: 'badge danger', text: '🔴 HIGH RISK' },
-            'medium': { className: 'badge warning', text: '⚠️ MEDIUM RISK' },
-            'low': { className: 'badge', text: '🔵 LOW RISK' },
-            'allowed_variance': { className: 'badge success', text: '✅ ALLOWED' }
-          };
-          return badges[category] || { className: 'badge', text: category.toUpperCase() };
-        };
+          
+          return filtered;
+        }
         
         if (loading) {
           return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
-            e('div', {style: {fontSize: '24px', marginBottom: '16px'}}, '⏳'),
-            e('div', null, 'Loading drift analysis...')
+            e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '⏳'),
+            e('div', {style: {fontSize: '18px'}}, 'Loading drift analysis...'),
+            e('div', {className: 'spinner', style: {margin: '20px auto'}})
           ]);
         }
         
@@ -548,227 +1013,114 @@
             e('div', {style: {fontSize: '18px', marginBottom: '8px'}}, 'No Analysis Results'),
             e('div', {style: {color: 'var(--muted)', marginBottom: '16px'}}, error),
             e('div', {style: {marginTop: '24px'}}, [
-              e('p', {style: {marginBottom: '12px'}}, 'Click "Analyze" button to run configuration drift detection'),
-              e('button', {
-                className: 'btn',
-                onClick: () => window.location.reload()
-              }, 'Refresh Page')
+              e('p', {style: {marginBottom: '12px'}}, 'Run an analysis to see drift detection results here')
             ])
           ]);
         }
         
         if (!driftData) {
-          return e('div', {className: 'card'}, e('div', null, 'No data available'));
+          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, 'No data available');
         }
         
-        // Get drift items by category
-        const highRisk = driftData.high || [];
-        const mediumRisk = driftData.medium || [];
-        const lowRisk = driftData.low || [];
-        const allowedVariance = driftData.allowed_variance || [];
+        // Use filtered data for display
+        const displayData = getFilteredData();
         
-        // Filter based on selected category
-        const allDrifts = [
-          ...highRisk.map(d => ({...d, category: 'high'})),
-          ...mediumRisk.map(d => ({...d, category: 'medium'})),
-          ...lowRisk.map(d => ({...d, category: 'low'})),
-          ...allowedVariance.map(d => ({...d, category: 'allowed_variance'}))
-        ];
+        // Extract statistics from LLM output summary
+        const summary = displayData?.summary || {};
+        const totalConfigFiles = summary.total_config_files || 0;
+        const filesWithDrift = summary.files_with_drift || 0;
+        const totalDrifts = summary.total_drifts || 0;
         
-        const filteredDrifts = selectedCategory === 'all' 
-          ? allDrifts 
-          : allDrifts.filter(d => d.category === selectedCategory);
+        // Risk counts from LLM output summary
+        const counts = { 
+          high: summary.high_risk || 0, 
+          medium: summary.medium_risk || 0, 
+          low: summary.low_risk || 0, 
+          allowed: summary.allowed_variance || 0 
+        };
         
-        return e('div', {className: 'grid'}, [
-          e('div', {className: 'card'}, [
-            // Header with summary
-            e('div', {style: {marginBottom: '24px'}}, [
-              e('h3', {style: {margin: '0 0 16px 0'}}, 'Configuration Drift Analysis'),
-              e('div', {style: {display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px'}}, [
-                // High Risk Card
-                e('div', {
-                  style: {
-                    padding: '12px',
-                    background: highRisk.length > 0 ? '#ffebe9' : '#f5f5f5',
-                    borderRadius: '6px',
-                    borderLeft: `4px solid ${highRisk.length > 0 ? 'var(--red)' : '#ddd'}`
-                  }
-                }, [
-                  e('div', {style: {fontSize: '24px', fontWeight: 'bold', color: 'var(--red)'}}, highRisk.length),
-                  e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginTop: '4px'}}, 'High Risk')
-                ]),
-                
-                // Medium Risk Card
-                e('div', {
-                  style: {
-                    padding: '12px',
-                    background: mediumRisk.length > 0 ? '#fff8e1' : '#f5f5f5',
-                    borderRadius: '6px',
-                    borderLeft: `4px solid ${mediumRisk.length > 0 ? 'var(--yellow)' : '#ddd'}`
-                  }
-                }, [
-                  e('div', {style: {fontSize: '24px', fontWeight: 'bold', color: 'var(--yellow)'}}, mediumRisk.length),
-                  e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginTop: '4px'}}, 'Medium Risk')
-                ]),
-                
-                // Low Risk Card
-                e('div', {
-                  style: {
-                    padding: '12px',
-                    background: lowRisk.length > 0 ? '#e3f2fd' : '#f5f5f5',
-                    borderRadius: '6px',
-                    borderLeft: `4px solid ${lowRisk.length > 0 ? 'var(--blue)' : '#ddd'}`
-                  }
-                }, [
-                  e('div', {style: {fontSize: '24px', fontWeight: 'bold', color: 'var(--blue)'}}, lowRisk.length),
-                  e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginTop: '4px'}}, 'Low Risk')
-                ]),
-                
-                // Allowed Variance Card
-                e('div', {
-                  style: {
-                    padding: '12px',
-                    background: allowedVariance.length > 0 ? '#e8f5e9' : '#f5f5f5',
-                    borderRadius: '6px',
-                    borderLeft: `4px solid ${allowedVariance.length > 0 ? 'var(--green)' : '#ddd'}`
-                  }
-                }, [
-                  e('div', {style: {fontSize: '24px', fontWeight: 'bold', color: 'var(--green)'}}, allowedVariance.length),
-                  e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginTop: '4px'}}, 'Allowed')
-                ])
-              ])
+        return e('div', null, [
+          // 7 Stat Boxes (matching index.html exactly)
+          e('div', {className:'stats', style:{margin:'0 0 24px 0'}}, [
+            // Summary Statistics (Top Row) - Display only (not clickable)
+            e('div', {className:'card stat', style:{
+              backgroundColor: 'white', 
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}, [
+              e('div',{className:'lbl'}, 'Total Config Files'), 
+              e('div',{className:'val', style:{color:'#1a1a1a'}}, totalConfigFiles)
             ]),
-            
-            // Category filter buttons
-            e('div', {style: {display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap'}}, [
-              e('button', {
-                className: `btn ${selectedCategory === 'all' ? 'success' : ''}`,
-                style: {fontSize: '13px'},
-                onClick: () => setSelectedCategory('all')
-              }, `All (${allDrifts.length})`),
-              e('button', {
-                className: `btn ${selectedCategory === 'high' ? 'danger' : ''}`,
-                style: {fontSize: '13px'},
-                onClick: () => setSelectedCategory('high')
-              }, `High (${highRisk.length})`),
-              e('button', {
-                className: `btn ${selectedCategory === 'medium' ? 'warning' : ''}`,
-                style: {fontSize: '13px'},
-                onClick: () => setSelectedCategory('medium')
-              }, `Medium (${mediumRisk.length})`),
-              e('button', {
-                className: `btn ${selectedCategory === 'low' ? '' : ''}`,
-                style: {fontSize: '13px'},
-                onClick: () => setSelectedCategory('low')
-              }, `Low (${lowRisk.length})`),
-              e('button', {
-                className: `btn ${selectedCategory === 'allowed_variance' ? 'success' : ''}`,
-                style: {fontSize: '13px'},
-                onClick: () => setSelectedCategory('allowed_variance')
-              }, `Allowed (${allowedVariance.length})`)
+            e('div', {className:'card stat', style:{
+              backgroundColor: 'white', 
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}, [
+              e('div',{className:'lbl'}, 'Files with Drift'), 
+              e('div',{className:'val', style:{color:'#1a1a1a'}}, filesWithDrift)
             ]),
+            e('div', {className:'card stat', style:{
+              backgroundColor: 'white', 
+              border: '1px solid #e0e0e0',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}, [
+              e('div',{className:'lbl'}, 'Total Drifts'), 
+              e('div',{className:'val', style:{color:'#1a1a1a'}}, totalDrifts)
+            ]),
+            // Risk Categories (Bottom Row) - Clickable filters
+            e('div', {className:'card stat clickable', style:{
+              backgroundColor: activeFilter === 'high' ? '#ffebee' : 'white', 
+              border: activeFilter === 'high' ? '3px solid var(--vz-red)' : '1px solid var(--line)',
+              cursor: 'pointer'
+            }, onClick: () => handleFilterClick('high')}, [
+              e('div',{className:'lbl'}, 'High Risk'), 
+              e('div',{className:'val', style:{color:'var(--vz-red)'}}, counts.high)
+            ]),
+            e('div', {className:'card stat clickable', style:{
+              backgroundColor: activeFilter === 'medium' ? '#fff3e0' : 'white', 
+              border: activeFilter === 'medium' ? '3px solid var(--med)' : '1px solid var(--line)',
+              cursor: 'pointer'
+            }, onClick: () => handleFilterClick('medium')}, [
+              e('div',{className:'lbl'}, 'Medium Risk'), 
+              e('div',{className:'val', style:{color:'var(--med)'}}, counts.medium)
+            ]),
+            e('div', {className:'card stat clickable', style:{
+              backgroundColor: activeFilter === 'low' ? '#f3e5f5' : 'white', 
+              border: activeFilter === 'low' ? '3px solid var(--low)' : '1px solid var(--line)',
+              cursor: 'pointer'
+            }, onClick: () => handleFilterClick('low')}, [
+              e('div',{className:'lbl'}, 'Low Risk'), 
+              e('div',{className:'val', style:{color:'var(--low)'}}, counts.low)
+            ]),
+            e('div', {className:'card stat clickable', style:{
+              backgroundColor: activeFilter === 'allowed' ? '#e8f5e8' : 'white', 
+              border: activeFilter === 'allowed' ? '3px solid var(--allowed)' : '1px solid var(--line)',
+              cursor: 'pointer'
+            }, onClick: () => handleFilterClick('allowed')}, [
+              e('div',{className:'lbl'}, 'Allowed Variance'), 
+              e('div',{className:'val', style:{color:'var(--allowed)'}}, counts.allowed)
+            ])
+          ]),
+          
+          // Drift Display Area
+          e('div', {className: 'grid-issues', style:{gap: '32px'}}, [
+            counts.high + counts.medium + counts.low + counts.allowed === 0 ? 
+              e('div',{className:'success-banner'}, [
+                e('p',{style:{fontSize:'18px',fontWeight:'bold',marginBottom:'4px'}}, 
+                  activeFilter === 'all' ? '✅ No Drift Detected' : `✅ No ${activeFilter} risk items found`),
+                e('p',{style:{margin:0}}, 
+                  activeFilter === 'all' ? 'All configurations match the golden state. No action required.' : 
+                  `Try clicking "Total Drifts" to see all items.`)
+              ]) : null,
             
-            // Drift items list
-            filteredDrifts.length === 0 ? 
-              e('div', {style: {textAlign: 'center', padding: '40px', color: 'var(--muted)'}}, 
-                `No ${selectedCategory === 'all' ? '' : selectedCategory + ' '}drift items found`) :
-              
-              filteredDrifts.map((drift, index) => {
-                const badge = getRiskBadge(drift.category);
-                const riskColor = getRiskColor(drift.category);
-                
-                return e('div', {
-                  key: drift.id || index,
-                  className: 'commit-item',
-                  style: {
-                    borderLeft: `4px solid ${riskColor}`,
-                    marginBottom: '12px'
-                  }
-                }, [
-                  // Header
-                  e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px'}}, [
-                    e('div', {style: {flex: 1}}, [
-                      e('div', {style: {fontSize: '16px', fontWeight: '600', marginBottom: '4px'}}, 
-                        drift.locator?.value || drift.file),
-                      e('div', {style: {fontSize: '13px', color: 'var(--muted)'}}, 
-                        `📄 ${drift.file}`)
-                    ]),
-                    e('span', {className: badge.className, style: {flexShrink: 0}}, badge.text)
-                  ]),
-                  
-                  // Change details
-                  e('div', {style: {display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px'}}, [
-                    e('div', {style: {
-                      padding: '8px',
-                      background: '#ffebe9',
-                      borderRadius: '4px',
-                      fontSize: '13px'
-                    }}, [
-                      e('div', {style: {fontWeight: '600', marginBottom: '4px', color: 'var(--red)'}}, '- Old Value:'),
-                      e('code', {style: {fontSize: '12px'}}, JSON.stringify(drift.old))
-                    ]),
-                    e('div', {style: {
-                      padding: '8px',
-                      background: '#e6ffed',
-                      borderRadius: '4px',
-                      fontSize: '13px'
-                    }}, [
-                      e('div', {style: {fontWeight: '600', marginBottom: '4px', color: 'var(--green)'}}, '+ New Value:'),
-                      e('code', {style: {fontSize: '12px'}}, JSON.stringify(drift.new))
-                    ])
-                  ]),
-                  
-                  // Why & Impact
-                  drift.why && e('div', {style: {marginBottom: '8px'}}, [
-                    e('div', {style: {fontSize: '13px', fontWeight: '600', marginBottom: '4px'}}, '📝 What Changed:'),
-                    e('div', {style: {fontSize: '13px', color: '#555'}}, drift.why)
-                  ]),
-                  
-                  drift.impact && e('div', {style: {marginBottom: '8px'}}, [
-                    e('div', {style: {fontSize: '13px', fontWeight: '600', marginBottom: '4px'}}, '⚠️ Impact:'),
-                    e('div', {style: {fontSize: '13px', color: '#555'}}, drift.impact)
-                  ]),
-                  
-                  // AI Review Assistant (if available)
-                  drift.ai_review_assistant && e('div', {
-                    style: {
-                      marginTop: '12px',
-                      padding: '12px',
-                      background: '#fff8dc',
-                      borderRadius: '6px',
-                      border: '1px solid #ffe082'
-                    }
-                  }, [
-                    e('div', {style: {fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: '#f57c00'}}, 
-                      '🤖 AI Review Assistant'),
-                    
-                    drift.ai_review_assistant.potential_risk && e('div', {style: {marginBottom: '8px'}}, [
-                      e('div', {style: {fontSize: '12px', fontWeight: '600', marginBottom: '4px'}}, 'Potential Risk:'),
-                      e('div', {style: {fontSize: '12px'}}, drift.ai_review_assistant.potential_risk)
-                    ]),
-                    
-                    drift.ai_review_assistant.suggested_action && e('div', null, [
-                      e('div', {style: {fontSize: '12px', fontWeight: '600', marginBottom: '4px'}}, 'Suggested Action:'),
-                      e('div', {style: {fontSize: '12px'}}, drift.ai_review_assistant.suggested_action)
-                    ])
-                  ]),
-                  
-                  // Remediation snippet (if available)
-                  drift.remediation?.snippet && e('div', {
-                    style: {
-                      marginTop: '12px',
-                      padding: '8px',
-                      background: '#f5f5f5',
-                      borderRadius: '4px',
-                      fontFamily: 'monospace',
-                      fontSize: '12px'
-                    }
-                  }, [
-                    e('div', {style: {fontWeight: '600', marginBottom: '4px'}}, '💡 Recommended Fix:'),
-                    e('code', null, drift.remediation.snippet)
-                  ])
-                ]);
-              })
+            // Show file-grouped view when "all" is selected, otherwise show risk-grouped view
+            activeFilter === 'all' ? 
+              e(AllDriftsByFile, {data: displayData}) : [
+                e(Bucket,{title:'🔴 High Risk Changes', items: displayData.high, kind:'high', riskColor: 'var(--vz-red)', Component: Issue}),
+                e(Bucket,{title:'🟠 Medium Risk Changes', items: displayData.medium, kind:'medium', riskColor: 'var(--med)', Component: Issue}),
+                e(Bucket,{title:'🟢 Low Risk Changes', items: displayData.low, kind:'low', riskColor: 'var(--low)', Component: Issue}),
+                e(Bucket,{title:'✅ Allowed Variance', items: displayData.allowed_variance, kind:'allowed', riskColor: 'var(--allowed)', Component: AllowedVarianceIssue})
+              ]
           ])
         ]);
       }
