@@ -394,6 +394,130 @@ def create_config_only_branch(
                 log_and_print(f"⚠️ Failed to cleanup temp directory: {e}", "warning")
 
 
+def create_selective_golden_branch(
+    repo_url: str,
+    old_golden_branch: str,
+    drift_branch: str,
+    new_branch_name: str,
+    approved_files: List[str],
+    config_paths: List[str],
+    gitlab_token: Optional[str] = None
+) -> bool:
+    """
+    Create a new golden branch by merging old golden branch with selected files from drift branch.
+    
+    Workflow:
+    1. Clone old golden branch as base
+    2. For each approved file: Copy from drift branch (overwrite)
+    3. For each rejected file: Keep from old golden branch (no change)
+    4. Commit and push as new golden branch
+    
+    Args:
+        repo_url: Repository URL
+        old_golden_branch: Current golden branch name (base for new golden)
+        drift_branch: Drift branch name (source for approved files)
+        new_branch_name: Name for the new golden branch
+        approved_files: List of files to accept from drift branch
+        config_paths: List of config file paths/patterns
+        gitlab_token: Optional GitLab token for authentication
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    temp_golden_dir = None
+    temp_drift_dir = None
+    
+    try:
+        log_and_print(f"🔄 Creating selective golden branch: {new_branch_name}")
+        log_and_print(f"📦 Old Golden: {old_golden_branch}")
+        log_and_print(f"📦 Drift: {drift_branch}")
+        log_and_print(f"✅ Approved Files: {len(approved_files)}")
+        
+        # Setup authentication
+        auth_url = setup_git_auth(repo_url, gitlab_token)
+        
+        # Step 1: Clone old golden branch as base
+        log_and_print(f"📥 Cloning old golden branch as base...")
+        temp_golden_dir = tempfile.mkdtemp(prefix="golden_base_")
+        golden_repo = git.Repo.clone_from(auth_url, temp_golden_dir, branch=old_golden_branch, depth=1)
+        
+        # Step 2: Clone drift branch to get new files
+        log_and_print(f"📥 Cloning drift branch to get approved files...")
+        temp_drift_dir = tempfile.mkdtemp(prefix="drift_source_")
+        drift_repo = git.Repo.clone_from(auth_url, temp_drift_dir, branch=drift_branch, depth=1)
+        
+        # Step 3: Copy approved files from drift to golden
+        log_and_print(f"📝 Copying {len(approved_files)} approved files...")
+        files_copied = 0
+        for file_path in approved_files:
+            try:
+                drift_file = Path(temp_drift_dir) / file_path
+                golden_file = Path(temp_golden_dir) / file_path
+                
+                if drift_file.exists():
+                    # Ensure parent directory exists
+                    golden_file.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Copy file from drift to golden
+                    shutil.copy2(drift_file, golden_file)
+                    files_copied += 1
+                else:
+                    log_and_print(f"⚠️ Warning: {file_path} not found in drift branch", "warning")
+            except Exception as e:
+                log_and_print(f"⚠️ Error copying {file_path}: {e}", "warning")
+        
+        log_and_print(f"✅ Copied {files_copied} files from drift to golden base")
+        
+        # Step 4: Create new orphan branch with the merged state
+        log_and_print(f"🌿 Creating new golden branch with merged state...")
+        golden_repo.git.checkout('--orphan', new_branch_name)
+        
+        # Clear index
+        golden_repo.git.rm('-rf', '--cached', '.')
+        
+        # Add all files (old golden + approved drift files)
+        golden_repo.git.add('.')
+        
+        # Verify what we're committing
+        try:
+            staged_files = golden_repo.git.diff('--cached', '--name-only').strip().split('\n')
+            staged_files = [f for f in staged_files if f.strip()]
+            log_and_print(f"📋 Staging {len(staged_files)} files for new golden branch")
+        except Exception as e:
+            log_and_print(f"⚠️ Could not verify staged files: {e}", "warning")
+        
+        # Create commit
+        commit_message = (
+            f"Selective certification: {new_branch_name}\n\n"
+            f"Base: {old_golden_branch}\n"
+            f"Accepted {files_copied} files from drift branch {drift_branch}\n"
+            f"Rejected files kept from old golden branch"
+        )
+        golden_repo.git.commit('-m', commit_message)
+        
+        # Push new golden branch
+        log_and_print(f"📤 Pushing new golden branch to remote...")
+        golden_repo.git.push('--set-upstream', 'origin', new_branch_name)
+        
+        log_and_print(f"✅ Selective golden branch {new_branch_name} created successfully!")
+        return True
+        
+    except GitCommandError as e:
+        log_and_print(f"❌ Git error creating selective golden branch: {e}", "error")
+        return False
+    except Exception as e:
+        log_and_print(f"❌ Error creating selective golden branch: {e}", "error")
+        return False
+    finally:
+        # Cleanup temporary directories
+        for temp_dir in [temp_golden_dir, temp_drift_dir]:
+            if temp_dir and os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as e:
+                    log_and_print(f"⚠️ Failed to cleanup temp directory: {e}", "warning")
+
+
 def list_branches_by_pattern(
     repo_url: str,
     pattern: str,

@@ -1070,6 +1070,78 @@ async def set_golden_branch(service_id: str, environment: str, branch_name: Opti
         raise HTTPException(status_code=500, detail=f"Failed to set golden branch: {str(e)}")
 
 
+@app.post("/api/services/{service_id}/certify-selective/{environment}")
+async def certify_selective_files(service_id: str, environment: str, request: Request):
+    """
+    Create a new golden branch with only selected files from drift branch.
+    Rejected files are kept from the old golden branch.
+    """
+    if service_id not in SERVICES_CONFIG:
+        raise HTTPException(404, f"Service {service_id} not found")
+    
+    config = SERVICES_CONFIG[service_id]
+    if environment not in config["environments"]:
+        raise HTTPException(400, f"Invalid environment '{environment}'. Must be one of: {config['environments']}")
+    
+    try:
+        # Get approved files from request
+        data = await request.json()
+        approved_files = data.get("approved_files", [])
+        
+        if not approved_files:
+            raise HTTPException(400, "No files selected for certification")
+        
+        from shared.golden_branch_tracker import get_active_golden_branch, get_active_drift_branch, add_golden_branch
+        from shared.git_operations import (
+            generate_unique_branch_name,
+            create_selective_golden_branch
+        )
+        
+        # Get current golden and drift branches
+        old_golden_branch = get_active_golden_branch(service_id, environment)
+        drift_branch = get_active_drift_branch(service_id, environment)
+        
+        if not old_golden_branch:
+            raise HTTPException(404, f"No golden branch found for {service_id}/{environment}")
+        
+        if not drift_branch:
+            raise HTTPException(404, f"No drift branch found for {service_id}/{environment}")
+        
+        # Generate new golden branch name
+        new_golden_branch = generate_unique_branch_name("golden", environment)
+        
+        # Create new golden branch with selective files
+        success = create_selective_golden_branch(
+            repo_url=config["repo_url"],
+            old_golden_branch=old_golden_branch,
+            drift_branch=drift_branch,
+            new_branch_name=new_golden_branch,
+            approved_files=approved_files,
+            config_paths=config.get("config_paths", DEFAULT_CONFIG_PATHS),
+            gitlab_token=os.getenv('GITLAB_TOKEN')
+        )
+        
+        if not success:
+            raise HTTPException(500, f"Failed to create selective golden branch")
+        
+        # Add new golden branch to tracker
+        add_golden_branch(service_id, environment, new_golden_branch)
+        
+        return {
+            "status": "success",
+            "message": f"Selective certification completed for {service_id}/{environment}",
+            "golden_branch": new_golden_branch,
+            "approved_files_count": len(approved_files),
+            "approved_files": approved_files,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Selective certification failed: {str(e)}")
+
+
 @app.get("/api/services/{service_id}/branches/{environment}")
 async def get_service_branches(service_id: str, environment: str):
     """Get all golden and drift branches for a service and environment"""

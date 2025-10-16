@@ -152,6 +152,9 @@
         
         const [activeTab, setActiveTab] = React.useState(tabParam);
         const [showStagingModal, setShowStagingModal] = React.useState(false);
+        const [showRecertifyModal, setShowRecertifyModal] = React.useState(false);  // ✅ Re-certify confirmation dialog
+        const [selectedEnvForRecertify, setSelectedEnvForRecertify] = React.useState(null);  // ✅ Track which env to re-certify
+        const [currentEnvironmentForAnalysis, setCurrentEnvironmentForAnalysis] = React.useState('prod');  // ✅ Track environment for analysis
         const [serviceConfig, setServiceConfig] = React.useState(null);
         const [certificationUpdateTrigger, setCertificationUpdateTrigger] = React.useState(0);
         const [triggerAnalysis, setTriggerAnalysis] = React.useState(0);  // ✅ Counter to trigger analysis
@@ -197,6 +200,27 @@
         
         function handleStagingClick() {
           setShowStagingModal(true);
+        }
+        
+        // ✅ Handle re-certify button click - show confirmation dialog
+        function handleRecertifyClick(env) {
+          setSelectedEnvForRecertify(env);
+          setShowRecertifyModal(true);
+        }
+        
+        // ✅ Handle re-certify confirmation - run analysis and switch to drift tab
+        function handleRecertifyConfirm() {
+          setShowRecertifyModal(false);
+          setCurrentEnvironmentForAnalysis(selectedEnvForRecertify);  // ✅ Set the environment for analysis
+          setActiveTab('deployment');  // Switch to Drift Analysis tab
+          setTriggerAnalysis(prev => prev + 1);  // Trigger analysis
+          setSelectedEnvForRecertify(null);
+        }
+        
+        // ✅ Handle re-certify cancellation
+        function handleRecertifyCancel() {
+          setShowRecertifyModal(false);
+          setSelectedEnvForRecertify(null);
         }
         
         function handlePromoteToStaging() {
@@ -268,8 +292,8 @@
           
           // Tab Content (reordered to match tab order)
           activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, certificationUpdateTrigger}),
-          activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, onCertificationUpdate: triggerCertificationUpdate}),
-          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: 'prod', triggerAnalysis, runId}),
+          activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, onRecertifyClick: handleRecertifyClick, serviceConfig, serviceId, onCertificationUpdate: triggerCertificationUpdate}),
+          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: currentEnvironmentForAnalysis, triggerAnalysis, runId}),
           activeTab === 'history' && e(HistoryTab, {serviceId, currentEnvironment: 'prod'}),
           
           // Staging Modal
@@ -278,6 +302,13 @@
             onPromote: handlePromoteToStaging,
             onReview: handleReviewStaging,
             issueData
+          }),
+          
+          // ✅ Re-certify Confirmation Modal
+          showRecertifyModal && e(RecertifyModal, {
+            onClose: handleRecertifyCancel,
+            onConfirm: handleRecertifyConfirm,
+            environment: selectedEnvForRecertify
           })
         ]);
       }
@@ -791,7 +822,7 @@
         });
       }
 
-      function FileGroupAll({fileName, drifts}) {
+      function FileGroupAll({fileName, drifts, isSelected, onToggle}) {
         const [isExpanded, setIsExpanded] = React.useState(false);
         
         const riskCounts = {
@@ -839,23 +870,42 @@
             style: {
               backgroundColor: fileRiskColor + '15',
               padding: '16px 20px',
-              cursor: 'pointer',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               borderBottom: isExpanded ? `1px solid ${fileRiskColor}40` : 'none'
-            },
-            onClick: () => setIsExpanded(!isExpanded)
+            }
           }, [
             e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
+              // ✅ Checkbox for file selection
+              e('input', {
+                type: 'checkbox',
+                checked: isSelected,
+                onChange: (evt) => {
+                  evt.stopPropagation();
+                  onToggle(fileName);
+                },
+                style: {
+                  width: '18px',
+                  height: '18px',
+                  cursor: 'pointer',
+                  accentColor: fileRiskColor
+                }
+              }),
               e('span', {style: {fontSize: '20px'}}, fileRiskIcon),
-                e('div', null, [
+              e('div', {
+                style: {cursor: 'pointer', flex: 1},
+                onClick: () => setIsExpanded(!isExpanded)
+              }, [
                 e('div', {style: {fontWeight: '500', fontSize: '14px', color: fileRiskColor}}, fileName),
                 e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
                   `${totalDrifts} drift${totalDrifts !== 1 ? 's' : ''} • ${riskSummary}`)
               ])
             ]),
-            e('div', {style: {fontSize: '24px', color: fileRiskColor}}, isExpanded ? '−' : '+')
+            e('div', {
+              style: {fontSize: '24px', color: fileRiskColor, cursor: 'pointer'},
+              onClick: () => setIsExpanded(!isExpanded)
+            }, isExpanded ? '−' : '+')
           ]),
           
           isExpanded && e('div', {style: {padding: '0'}}, [
@@ -887,7 +937,7 @@
         ]);
       }
 
-      function AllDriftsByFile({data}) {
+      function AllDriftsByFile({data, selectedFiles, onToggleFile}) {
         if (!data) return null;
         const allDrifts = [
           ...(data.high || []).map(d => ({...d, _riskLevel: 'high'})),
@@ -902,12 +952,18 @@
           e('h2', {className: 'section-title', style:{color: '#333', borderBottom: '2px solid #333'}}, 
             '📁 All Drifts by File'),
           e('div', {style: {marginTop: '16px'}}, fileNames.map(fileName => 
-            e(FileGroupAll, {key: fileName, fileName, drifts: fileGroups[fileName]})
+            e(FileGroupAll, {
+              key: fileName, 
+              fileName, 
+              drifts: fileGroups[fileName],
+              isSelected: selectedFiles[fileName] || false,
+              onToggle: onToggleFile
+            })
           ))
         ]);
       }
 
-      function Bucket({title, items, kind, riskColor, Component}){ 
+      function Bucket({title, items, kind, riskColor, Component, selectedFiles, onToggleFile}){ 
         if (!items || items.length === 0) return null;
         const itemsWithRisk = items.map(item => ({...item, _riskLevel: kind}));
         const fileGroups = groupDriftsByFile(itemsWithRisk);
@@ -929,24 +985,43 @@
                 style: {
                   backgroundColor: riskColor + '15',
                   padding: '16px 20px',
-                  cursor: 'pointer',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   borderBottom: isExpanded ? `1px solid ${riskColor}40` : 'none'
-                },
-                onClick: () => setIsExpanded(!isExpanded)
+                }
               }, [
                 e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
+                  // ✅ Checkbox for file selection
+                  e('input', {
+                    type: 'checkbox',
+                    checked: selectedFiles[fileName] || false,
+                    onChange: (evt) => {
+                      evt.stopPropagation();
+                      onToggleFile(fileName);
+                    },
+                    style: {
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      accentColor: riskColor
+                    }
+                  }),
                   e('span', {style: {fontSize: '20px'}}, 
                     kind === 'high' ? '🔴' : kind === 'medium' ? '🟠' : kind === 'low' ? '🟢' : '✅'),
-                  e('div', null, [
+                  e('div', {
+                    style: {cursor: 'pointer', flex: 1},
+                    onClick: () => setIsExpanded(!isExpanded)
+                  }, [
                     e('div', {style: {fontWeight: '500', fontSize: '14px', color: riskColor}}, fileName),
                     e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
                       `${fileDrifts.length} drift${fileDrifts.length !== 1 ? 's' : ''}`)
                 ])
               ]),
-                e('div', {style: {fontSize: '24px', color: riskColor}}, isExpanded ? '−' : '+')
+                e('div', {
+                  style: {fontSize: '24px', color: riskColor, cursor: 'pointer'},
+                  onClick: () => setIsExpanded(!isExpanded)
+                }, isExpanded ? '−' : '+')
               ]),
               
               isExpanded && e('div', {style: {padding: '0'}}, [
@@ -970,6 +1045,8 @@
         const [activeFilter, setActiveFilter] = React.useState('all');
         const [hasRunAnalysis, setHasRunAnalysis] = React.useState(false);  // ✅ Track if user has run analysis
         const [runDetails, setRunDetails] = React.useState(null);  // ✅ Store specific run details
+        const [selectedFiles, setSelectedFiles] = React.useState({});  // ✅ Track which files are selected for certification
+        const [certifying, setCertifying] = React.useState(false);  // ✅ Track certification in progress
         
         // ✅ Function to run analysis (will be called by analyze button)
         const runAnalysis = React.useCallback(async () => {
@@ -1072,9 +1149,142 @@
           }
         }, [triggerAnalysis, runAnalysis, runId]);
         
+        // ✅ Auto-select all files when drift data is loaded
+        React.useEffect(() => {
+          if (driftData) {
+            // Group all drifts by file to get unique file names
+            const allDrifts = [
+              ...(driftData.high || []).map(d => ({...d, _riskLevel: 'high'})),
+              ...(driftData.medium || []).map(d => ({...d, _riskLevel: 'medium'})),
+              ...(driftData.low || []).map(d => ({...d, _riskLevel: 'low'})),
+              ...(driftData.allowed_variance || []).map(d => ({...d, _riskLevel: 'allowed'}))
+            ];
+            const fileGroups = groupDriftsByFile(allDrifts);
+            const allFiles = {};
+            Object.keys(fileGroups).forEach(file => {
+              allFiles[file] = true;  // Select all files by default
+            });
+            setSelectedFiles(allFiles);
+          }
+        }, [driftData]);
+        
         // Filter functions
         function handleFilterClick(filter) {
           setActiveFilter(activeFilter === filter ? 'all' : filter);
+        }
+        
+        // ✅ File selection handlers
+        function toggleFileSelection(fileName) {
+          setSelectedFiles(prev => ({
+            ...prev,
+            [fileName]: !prev[fileName]
+          }));
+        }
+        
+        function selectAllFiles() {
+          if (!driftData) return;
+          // Group all drifts by file to get unique file names
+          const allDrifts = [
+            ...(driftData.high || []).map(d => ({...d, _riskLevel: 'high'})),
+            ...(driftData.medium || []).map(d => ({...d, _riskLevel: 'medium'})),
+            ...(driftData.low || []).map(d => ({...d, _riskLevel: 'low'})),
+            ...(driftData.allowed_variance || []).map(d => ({...d, _riskLevel: 'allowed'}))
+          ];
+          const fileGroups = groupDriftsByFile(allDrifts);
+          const allFiles = {};
+          Object.keys(fileGroups).forEach(file => {
+            allFiles[file] = true;
+          });
+          setSelectedFiles(allFiles);
+        }
+        
+        function deselectAllFiles() {
+          if (!driftData) return;
+          // Group all drifts by file to get unique file names
+          const allDrifts = [
+            ...(driftData.high || []).map(d => ({...d, _riskLevel: 'high'})),
+            ...(driftData.medium || []).map(d => ({...d, _riskLevel: 'medium'})),
+            ...(driftData.low || []).map(d => ({...d, _riskLevel: 'low'})),
+            ...(driftData.allowed_variance || []).map(d => ({...d, _riskLevel: 'allowed'}))
+          ];
+          const fileGroups = groupDriftsByFile(allDrifts);
+          const allFiles = {};
+          Object.keys(fileGroups).forEach(file => {
+            allFiles[file] = false;
+          });
+          setSelectedFiles(allFiles);
+        }
+        
+        function getSelectedFilesCount() {
+          return Object.values(selectedFiles).filter(Boolean).length;
+        }
+        
+        function getTotalFilesCount() {
+          if (!driftData) return 0;
+          // Group all drifts by file to count unique files
+          const allDrifts = [
+            ...(driftData.high || []).map(d => ({...d, _riskLevel: 'high'})),
+            ...(driftData.medium || []).map(d => ({...d, _riskLevel: 'medium'})),
+            ...(driftData.low || []).map(d => ({...d, _riskLevel: 'low'})),
+            ...(driftData.allowed_variance || []).map(d => ({...d, _riskLevel: 'allowed'}))
+          ];
+          const fileGroups = groupDriftsByFile(allDrifts);
+          return Object.keys(fileGroups).length;
+        }
+        
+        // ✅ Certify selected files
+        async function certifySelectedFiles() {
+          const selectedFilesList = Object.keys(selectedFiles).filter(file => selectedFiles[file]);
+          
+          if (selectedFilesList.length === 0) {
+            alert('Please select at least one file to certify.');
+            return;
+          }
+          
+          const confirmed = confirm(
+            `You are about to certify ${selectedFilesList.length} of ${getTotalFilesCount()} files.\n\n` +
+            `A new golden branch will be created with:\n` +
+            `- Accepted files: Latest version from drift branch\n` +
+            `- Rejected files: Original version from current golden branch\n\n` +
+            `Continue?`
+          );
+          
+          if (!confirmed) return;
+          
+          try {
+            setCertifying(true);
+            const response = await fetch(`/api/services/${serviceId}/certify-selective/${currentEnvironment}`, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                approved_files: selectedFilesList
+              })
+            });
+            
+            if (!response.ok) {
+              let errorData;
+              try {
+                errorData = await response.json();
+              } catch (e) {
+                errorData = { detail: 'Certification failed - server error' };
+              }
+              throw new Error(errorData.detail || 'Certification failed');
+            }
+            
+            const result = await response.json();
+            alert(`✅ Certification successful!\n\nNew golden branch: ${result.golden_branch}\nAccepted files: ${selectedFilesList.length}\nRejected files: ${getTotalFilesCount() - selectedFilesList.length}`);
+            
+            // Give user time to read the alert before redirecting
+            setTimeout(() => {
+              window.location.href = `/branch-environment?id=${serviceId}&tab=certifications`;
+            }, 500);
+            
+          } catch (err) {
+            console.error('Certification error:', err);
+            alert(`❌ Certification failed: ${err.message}`);
+          } finally {
+            setCertifying(false);
+          }
         }
 
         function getFilteredData() {
@@ -1173,6 +1383,48 @@
             }, '🔄 Run New Analysis')
           ]),
           
+          // ✅ File Selection Controls & Certify Button
+          !runId && e('div', {style: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '16px',
+            backgroundColor: '#f8f9fa',
+            borderRadius: '8px',
+            marginBottom: '24px',
+            border: '1px solid #dee2e6'
+          }}, [
+            e('div', {style: {display: 'flex', alignItems: 'center', gap: '16px'}}, [
+              e('div', {style: {fontWeight: '500', color: '#495057'}}, 
+                `Selected: ${getSelectedFilesCount()} of ${getTotalFilesCount()} files`
+              ),
+              e('div', {style: {display: 'flex', gap: '8px'}}, [
+                e('button', {
+                  className: 'btn',
+                  onClick: selectAllFiles,
+                  style: {fontSize: '13px', padding: '6px 12px', backgroundColor: '#e7f5ff', color: '#1971c2', border: '1px solid #a5d8ff'}
+                }, '✓ Select All'),
+                e('button', {
+                  className: 'btn',
+                  onClick: deselectAllFiles,
+                  style: {fontSize: '13px', padding: '6px 12px', backgroundColor: '#fff5f5', color: '#c92a2a', border: '1px solid #ffc9c9'}
+                }, '✗ Deselect All')
+              ])
+            ]),
+            e('button', {
+              className: 'btn primary',
+              onClick: certifySelectedFiles,
+              disabled: certifying || getSelectedFilesCount() === 0,
+              style: {
+                fontSize: '14px',
+                padding: '10px 20px',
+                fontWeight: '600',
+                opacity: certifying || getSelectedFilesCount() === 0 ? 0.6 : 1,
+                cursor: certifying || getSelectedFilesCount() === 0 ? 'not-allowed' : 'pointer'
+              }
+            }, certifying ? '⏳ Certifying...' : '✅ Certify Accepted Files')
+          ]),
+          
           // 7 Stat Boxes (matching index.html exactly)
           e('div', {className:'stats', style:{margin:'0 0 24px 0'}}, [
             // Summary Statistics (Top Row) - Display only (not clickable)
@@ -1248,17 +1500,21 @@
             
             // Show file-grouped view when "all" is selected, otherwise show risk-grouped view
             activeFilter === 'all' ? 
-              e(AllDriftsByFile, {data: displayData}) : [
-                e(Bucket,{title:'🔴 High Risk Changes', items: displayData.high, kind:'high', riskColor: 'var(--vz-red)', Component: Issue}),
-                e(Bucket,{title:'🟠 Medium Risk Changes', items: displayData.medium, kind:'medium', riskColor: 'var(--med)', Component: Issue}),
-                e(Bucket,{title:'🟢 Low Risk Changes', items: displayData.low, kind:'low', riskColor: 'var(--low)', Component: Issue}),
-                e(Bucket,{title:'✅ Allowed Variance', items: displayData.allowed_variance, kind:'allowed', riskColor: 'var(--allowed)', Component: AllowedVarianceIssue})
+              e(AllDriftsByFile, {
+                data: displayData,
+                selectedFiles: selectedFiles,
+                onToggleFile: toggleFileSelection
+              }) : [
+                e(Bucket,{title:'🔴 High Risk Changes', items: displayData.high, kind:'high', riskColor: 'var(--vz-red)', Component: Issue, selectedFiles: selectedFiles, onToggleFile: toggleFileSelection}),
+                e(Bucket,{title:'🟠 Medium Risk Changes', items: displayData.medium, kind:'medium', riskColor: 'var(--med)', Component: Issue, selectedFiles: selectedFiles, onToggleFile: toggleFileSelection}),
+                e(Bucket,{title:'🟢 Low Risk Changes', items: displayData.low, kind:'low', riskColor: 'var(--low)', Component: Issue, selectedFiles: selectedFiles, onToggleFile: toggleFileSelection}),
+                e(Bucket,{title:'✅ Allowed Variance', items: displayData.allowed_variance, kind:'allowed', riskColor: 'var(--allowed)', Component: AllowedVarianceIssue, selectedFiles: selectedFiles, onToggleFile: toggleFileSelection})
               ]
           ])
         ]);
       }
       
-      function CertificationsTab({issueData, onStagingClick, serviceConfig, serviceId, onCertificationUpdate}) {
+      function CertificationsTab({issueData, onStagingClick, onRecertifyClick, serviceConfig, serviceId, onCertificationUpdate}) {
         const [certifications, setCertifications] = React.useState({});
         const [loading, setLoading] = React.useState({});
         const [error, setError] = React.useState(null);
@@ -1429,7 +1685,7 @@
                     e('button', {
                       className: 'btn',
                       disabled: isLoading,
-                      onClick: () => handleCertify(env),
+                      onClick: () => onRecertifyClick(env),  // ✅ Use confirmation dialog instead of direct certify
                       style: {backgroundColor: '#F3F4F6', color: '#111827', border: '1px solid #D1D5DB'}
                     }, [
                       e('span', {style: {marginRight: '6px'}}, '↻'),
@@ -1644,6 +1900,31 @@
               ])
             ]);
           })
+        ]);
+      }
+      
+      // ✅ Re-certify Confirmation Modal Component
+      function RecertifyModal({onClose, onConfirm, environment}) {
+        return e('div', {className: 'modal-overlay', onClick: onClose}, [
+          e('div', {className: 'modal', onClick: (e) => e.stopPropagation()}, [
+            e('h3', null, '🔄 Re-certify Environment'),
+            e('p', null, `This will run drift analysis to compare against the current golden branch and show you what has changed.`),
+            e('p', {style: {fontWeight: '600', color: 'var(--text)'}}, `Environment: ${environment}`),
+            
+            e('div', {style: {background: '#f0f9ff', padding: '12px', borderRadius: '8px', margin: '16px 0', border: '1px solid #0ea5e9'}}, [
+              e('strong', {style: {color: '#0c4a6e'}}, 'What happens next:'),
+              e('ul', {style: {margin: '8px 0 0 0', color: '#0c4a6e'}}, [
+                e('li', null, 'Run drift analysis to detect configuration changes'),
+                e('li', null, 'Switch to Drift Analysis tab to review results'),
+                e('li', null, 'You can then certify the drift and create a new golden branch')
+              ])
+            ]),
+            
+            e('div', {className: 'modal-actions'}, [
+              e('button', {className: 'btn', onClick: onClose}, 'Cancel'),
+              e('button', {className: 'btn primary', onClick: onConfirm}, 'Run Analysis')
+            ])
+          ])
         ]);
       }
       

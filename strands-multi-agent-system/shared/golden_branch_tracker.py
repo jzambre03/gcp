@@ -98,6 +98,37 @@ def get_active_golden_branch(service_id: str, environment: str) -> Optional[str]
     return golden_branches[-1]
 
 
+def get_active_drift_branch(service_id: str, environment: str) -> Optional[str]:
+    """
+    Get the most recent (active) drift branch for a service and environment.
+    
+    Args:
+        service_id: Service identifier (e.g., "cxp_ordering_services")
+        environment: Environment name (e.g., "prod", "dev", "qa", "staging")
+        
+    Returns:
+        Branch name (e.g., "drift_prod_20251015_143052") or None if not found
+    """
+    data = _load_branches_data()
+    
+    if service_id not in data:
+        logger.warning(f"Service {service_id} not found in branches data")
+        return None
+    
+    if environment not in data[service_id]:
+        logger.warning(f"Environment {environment} not found for service {service_id}")
+        return None
+    
+    drift_branches = data[service_id][environment].get("drift_branches", [])
+    
+    if not drift_branches:
+        logger.warning(f"No drift branches found for {service_id}/{environment}")
+        return None
+    
+    # Return the most recent (last in list)
+    return drift_branches[-1]
+
+
 def add_golden_branch(service_id: str, environment: str, branch_name: str) -> None:
     """
     Add a new golden branch for a service and environment.
