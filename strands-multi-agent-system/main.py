@@ -840,8 +840,30 @@ def save_run_history(service_id: str, environment: str, run_data: dict):
             print(f"⚠️ Could not load existing history: {e}")
     
     # Extract run metadata from result
-    validation_result = run_data.get("validation_result", run_data)
-    request_params = run_data.get("request_params", validation_result.get("request_params", {}))
+    # Handle nested structure: run_data.validation_result.validation_result
+    result = run_data.get("validation_result", run_data)  # Gets outer result object
+    validation_result = result.get("validation_result", result)  # Gets nested validation_result
+    request_params = result.get("request_params", validation_result.get("request_params", {}))
+    
+    # Debug: Log what we're extracting
+    print(f"🔍 Extracting run metadata:")
+    print(f"   Run ID: {validation_result.get('run_id', 'NOT FOUND')}")
+    print(f"   Verdict: {validation_result.get('verdict', 'NOT FOUND')}")
+    print(f"   Files analyzed: {validation_result.get('files_analyzed', 'NOT FOUND')}")
+    print(f"   Files with drift: {validation_result.get('files_with_drift', 'NOT FOUND')}")
+    
+    # Try to get actual branch names from golden_branch_tracker
+    golden_branch_name = "N/A"
+    drift_branch_name = "N/A"
+    try:
+        from shared.golden_branch_tracker import get_all_branches, get_active_golden_branch
+        golden_branches, drift_branches = get_all_branches(service_id, environment)
+        golden_branch_name = get_active_golden_branch(service_id, environment) or "N/A"
+        drift_branch_name = drift_branches[0] if drift_branches else "N/A"
+        print(f"   Golden branch (from tracker): {golden_branch_name}")
+        print(f"   Drift branch (from tracker): {drift_branch_name}")
+    except Exception as e:
+        print(f"⚠️ Could not fetch branch names from tracker: {e}")
     
     run_metadata = {
         "run_id": validation_result.get("run_id", "unknown"),
@@ -851,8 +873,8 @@ def save_run_history(service_id: str, environment: str, run_data: dict):
         
         "branches": {
             "main_branch": request_params.get("main_branch", "unknown"),
-            "golden_branch": validation_result.get("golden_branch", "N/A"),
-            "drift_branch": validation_result.get("drift_branch", "N/A")
+            "golden_branch": validation_result.get("golden_branch", golden_branch_name),
+            "drift_branch": validation_result.get("drift_branch", drift_branch_name)
         },
         
         "metrics": {
@@ -868,7 +890,7 @@ def save_run_history(service_id: str, environment: str, run_data: dict):
         "file_paths": validation_result.get("file_paths", {}),
         
         "summary": {
-            "top_issues": validation_result.get("policy_violations", [])[:3] if validation_result.get("policy_violations") else []
+            "top_issues": [v.get("description", "") for v in (validation_result.get("policy_violations", []) or [])[:3]]
         }
     }
     
@@ -882,7 +904,11 @@ def save_run_history(service_id: str, environment: str, run_data: dict):
     try:
         with open(history_file, 'w', encoding='utf-8') as f:
             json.dump(history, f, indent=2, default=str)
-        print(f"✅ Saved run history for {service_id}/{environment} (total runs: {len(history['runs'])})")
+        print(f"✅ Saved run history for {service_id}/{environment}")
+        print(f"   📁 File: {history_file}")
+        print(f"   📊 Total runs: {len(history['runs'])}")
+        print(f"   🆔 Latest run ID: {run_metadata.get('run_id', 'unknown')}")
+        print(f"   ⚖️  Latest verdict: {run_metadata.get('verdict', 'unknown')}")
     except Exception as e:
         print(f"⚠️ Could not save run history: {e}")
 
