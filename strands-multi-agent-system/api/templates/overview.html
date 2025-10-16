@@ -468,7 +468,7 @@
         
         const handleBranchEnvironment = (e) => {
           e.stopPropagation();
-          window.location.href = `/branch-environment?id=${service.id}&file=config_files/application.yml`;
+          window.location.href = `/branch-environment?id=${service.id}`;  // ✅ Removed unnecessary file parameter
         };
         
         const getEnvironmentDisplayName = (env) => {

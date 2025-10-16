@@ -793,6 +793,12 @@ def store_service_result(service_id: str, environment: str, result: dict):
         
         print(f"✅ Stored result for {service_id}/{environment} to: {result_file}")
         
+        # NEW: Save to run history for UI display
+        save_run_history(service_id, environment, {
+            "validation_result": result,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+        
         # Keep only the 5 most recent results per service/environment
         cleanup_old_results(service_results_dir, keep_count=5)
         
@@ -810,6 +816,75 @@ def cleanup_old_results(service_dir: Path, keep_count: int = 5):
                 print(f"🗑️ Cleaned up old result file: {old_file.name}")
     except Exception as e:
         print(f"⚠️ Could not cleanup old results: {e}")
+
+
+def save_run_history(service_id: str, environment: str, run_data: dict):
+    """
+    Save run metadata to history file for displaying in UI.
+    
+    Args:
+        service_id: Service identifier
+        environment: Environment name
+        run_data: Complete run data including metrics, branches, file paths
+    """
+    history_file = Path("config_data") / "service_results" / service_id / environment / "run_history.json"
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Load existing history
+    history = {"service_id": service_id, "environment": environment, "runs": []}
+    if history_file.exists():
+        try:
+            with open(history_file, 'r', encoding='utf-8') as f:
+                history = json.load(f)
+        except Exception as e:
+            print(f"⚠️ Could not load existing history: {e}")
+    
+    # Extract run metadata from result
+    validation_result = run_data.get("validation_result", run_data)
+    request_params = run_data.get("request_params", validation_result.get("request_params", {}))
+    
+    run_metadata = {
+        "run_id": validation_result.get("run_id", "unknown"),
+        "timestamp": run_data.get("timestamp", datetime.now(timezone.utc).isoformat()),
+        "execution_time_seconds": validation_result.get("execution_time_ms", 0) / 1000 if validation_result.get("execution_time_ms") else 0,
+        "verdict": validation_result.get("verdict", "UNKNOWN"),
+        
+        "branches": {
+            "main_branch": request_params.get("main_branch", "unknown"),
+            "golden_branch": validation_result.get("golden_branch", "N/A"),
+            "drift_branch": validation_result.get("drift_branch", "N/A")
+        },
+        
+        "metrics": {
+            "files_analyzed": validation_result.get("files_analyzed", 0),
+            "files_with_drift": validation_result.get("files_with_drift", 0),
+            "total_deltas": validation_result.get("total_deltas", 0),
+            "policy_violations": validation_result.get("policy_violations_count", 0),
+            "critical_violations": validation_result.get("critical_violations", 0),
+            "high_violations": validation_result.get("high_violations", 0),
+            "overall_risk_level": validation_result.get("overall_risk_level", "unknown")
+        },
+        
+        "file_paths": validation_result.get("file_paths", {}),
+        
+        "summary": {
+            "top_issues": validation_result.get("policy_violations", [])[:3] if validation_result.get("policy_violations") else []
+        }
+    }
+    
+    # Add to beginning of runs list (newest first)
+    history["runs"].insert(0, run_metadata)
+    
+    # Keep only last 50 runs to avoid file getting too large
+    history["runs"] = history["runs"][:50]
+    
+    # Save updated history
+    try:
+        with open(history_file, 'w', encoding='utf-8') as f:
+            json.dump(history, f, indent=2, default=str)
+        print(f"✅ Saved run history for {service_id}/{environment} (total runs: {len(history['runs'])})")
+    except Exception as e:
+        print(f"⚠️ Could not save run history: {e}")
 
 
 @app.post("/api/services/{service_id}/import-result/{environment}")
@@ -1017,6 +1092,67 @@ async def revoke_golden_branch(service_id: str, environment: str):
     except Exception as e:
         print(f"❌ Error revoking golden branch for {service_id}/{environment}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to revoke golden branch: {str(e)}")
+
+
+@app.get("/api/services/{service_id}/run-history/{environment}")
+async def get_run_history(service_id: str, environment: str):
+    """Get run history for a specific service/environment"""
+    if service_id not in SERVICES_CONFIG:
+        raise HTTPException(404, f"Service {service_id} not found")
+    
+    config = SERVICES_CONFIG[service_id]
+    if environment not in config["environments"]:
+        raise HTTPException(400, f"Invalid environment '{environment}'. Must be one of: {config['environments']}")
+    
+    history_file = Path("config_data") / "service_results" / service_id / environment / "run_history.json"
+    
+    if not history_file.exists():
+        return {
+            "service_id": service_id,
+            "environment": environment,
+            "runs": []
+        }
+    
+    try:
+        with open(history_file, 'r', encoding='utf-8') as f:
+            history = json.load(f)
+        return history
+    except Exception as e:
+        raise HTTPException(500, f"Failed to load run history: {str(e)}")
+
+
+@app.get("/api/services/{service_id}/run/{run_id}")
+async def get_run_details(service_id: str, run_id: str):
+    """Get detailed results for a specific run"""
+    if service_id not in SERVICES_CONFIG:
+        raise HTTPException(404, f"Service {service_id} not found")
+    
+    # Search for the run in all environments
+    for env in SERVICES_CONFIG[service_id]["environments"]:
+        history_file = Path("config_data") / "service_results" / service_id / env / "run_history.json"
+        
+        if history_file.exists():
+            try:
+                with open(history_file, 'r', encoding='utf-8') as f:
+                    history = json.load(f)
+                
+                # Find the specific run
+                for run in history["runs"]:
+                    if run["run_id"] == run_id:
+                        # Try to load the detailed result file
+                        result_file = run["file_paths"].get("stored_result")
+                        if result_file and Path(result_file).exists():
+                            with open(result_file, 'r', encoding='utf-8') as rf:
+                                detailed_result = json.load(rf)
+                            return detailed_result
+                        else:
+                            # Return the run metadata at least
+                            return {"run": run, "environment": env}
+            except Exception as e:
+                print(f"⚠️ Error searching in {env}: {e}")
+                continue
+    
+    raise HTTPException(404, f"Run {run_id} not found for service {service_id}")
 
 
 @app.get("/health")

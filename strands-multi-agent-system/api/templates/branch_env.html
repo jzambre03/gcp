@@ -93,15 +93,11 @@
         const [serviceConfig, setServiceConfig] = React.useState(null);
         const [certificationUpdateTrigger, setCertificationUpdateTrigger] = React.useState(0);
         
-        // Get URL parameters to identify the specific issue
+        // Get URL parameters to identify the service
         const urlParams = new URLSearchParams(window.location.search);
-        const issueId = urlParams.get('id') || 'unknown';
-        const file = decodeURIComponent(urlParams.get('file') || 'config_files/application-vbg.yml');
+        const serviceId = urlParams.get('id') || 'unknown';
         
-        // Get service ID from URL
-        const serviceId = window.location.pathname.includes('/service/') 
-          ? window.location.pathname.split('/service/')[1] 
-          : issueId; // fallback to issueId
+        // Note: Removed 'file' parameter as it was unused placeholder code
         
         // Load service configuration
         React.useEffect(() => {
@@ -120,10 +116,9 @@
         
         // Mock issue data - in real app, this would be fetched from API
         const issueData = {
-          id: issueId,
-          file: file,
+          id: serviceId,
           riskLevel: 'high', // Could be high, medium, low, allowed
-          description: `Configuration drift detected in ${file}`,
+          description: `Configuration drift detected for ${serviceConfig?.name || serviceId}`,
           affectedEnvironments: ['production', 'staging'],
           currentBranch: 'main',
           deployedBranch: 'main',
@@ -199,14 +194,14 @@
             e('button', {
               className: `tab ${activeTab === 'history' ? 'active' : ''}`,
               onClick: () => setActiveTab('history')
-            }, 'Change History')
+            }, 'Analysis History')  // ✅ Updated: Better name for what it shows
           ]),
           
           // Tab Content
           activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, certificationUpdateTrigger}),
           activeTab === 'deployment' && e(DeploymentTab, {issueData, onStagingClick: handleStagingClick}),
           activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, onCertificationUpdate: triggerCertificationUpdate}),
-          activeTab === 'history' && e(HistoryTab, {issueData}),
+          activeTab === 'history' && e(HistoryTab, {serviceId, currentEnvironment: 'prod'}),  // ✅ Updated: Pass serviceId and environment
           
           // Staging Modal
           showStagingModal && e(StagingModal, {
@@ -738,36 +733,180 @@
         ]);
       }
       
-      function HistoryTab({issueData}) {
+      function HistoryTab({serviceId, currentEnvironment}) {
+        const [runHistory, setRunHistory] = React.useState([]);
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState(null);
+        const [selectedEnv, setSelectedEnv] = React.useState(currentEnvironment || 'prod');
+        
+        // Load run history from API
+        React.useEffect(() => {
+          const loadRunHistory = async () => {
+            if (!serviceId || !selectedEnv) return;
+            
+            try {
+              setLoading(true);
+              const response = await fetch(`/api/services/${serviceId}/run-history/${selectedEnv}`);
+              if (!response.ok) throw new Error('Failed to load run history');
+              const data = await response.json();
+              setRunHistory(data.runs || []);
+              setError(null);
+            } catch (err) {
+              console.error('Error loading run history:', err);
+              setError(err.message);
+              setRunHistory([]);
+            } finally {
+              setLoading(false);
+            }
+          };
+          
+          loadRunHistory();
+        }, [serviceId, selectedEnv]);
+        
+        // Format timestamp
+        const formatTimestamp = (isoString) => {
+          try {
+            const date = new Date(isoString);
+            return date.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+          } catch {
+            return isoString;
+          }
+        };
+        
+        // Get verdict badge configuration
+        const getVerdictBadge = (verdict) => {
+          const configs = {
+            'PASS': { className: 'badge success', text: '✅ PASS' },
+            'WARN': { className: 'badge warning', text: '⚠️ WARN' },
+            'REVIEW_REQUIRED': { className: 'badge warning', text: '🔍 REVIEW' },
+            'BLOCK': { className: 'badge danger', text: '🚫 BLOCK' },
+            'COMPLETED': { className: 'badge success', text: '✅ COMPLETED' }
+          };
+          return configs[verdict] || { className: 'badge', text: verdict };
+        };
+        
+        // Handle click to view run details
+        const handleViewRun = (run) => {
+          window.location.href = `/service/${serviceId}?run_id=${run.run_id}&env=${selectedEnv}`;
+        };
+        
+        if (loading) {
+          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
+            e('div', {style: {fontSize: '24px', marginBottom: '16px'}}, '⏳'),
+            e('div', null, 'Loading analysis history...')
+          ]);
+        }
+        
+        if (error) {
+          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
+            e('div', {style: {fontSize: '24px', marginBottom: '16px', color: 'var(--red)'}}, '❌'),
+            e('div', null, `Error: ${error}`),
+            e('button', {
+              className: 'btn',
+              style: {marginTop: '16px'},
+              onClick: () => window.location.reload()
+            }, 'Retry')
+          ]);
+        }
+        
+        if (runHistory.length === 0) {
+          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
+            e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '📭'),
+            e('div', {style: {fontSize: '18px', marginBottom: '8px'}}, 'No analysis runs yet'),
+            e('div', {style: {color: 'var(--muted)', marginTop: '8px'}}, 
+              `Run an analysis for ${selectedEnv} environment to see results here`)
+          ]);
+        }
+        
         return e('div', {className: 'card'}, [
-          e('h3', {style: {margin: '0 0 20px 0'}}, 'Change History'),
-          
-          e('div', {className: 'commit-item'}, [
-            e('div', {style: {display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}, [
-              e('span', {className: 'commit-hash'}, 'a1b2c3d4'),
-              e('span', {className: 'badge success'}, 'Deployed')
-            ]),
-            e('div', {className: 'commit-meta'}, 'production • 2 hours ago • Sarah Chen'),
-            e('div', {style: {marginTop: '4px'}}, 'feat: update session timeout configuration')
+          e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px'}}, [
+            e('h3', {style: {margin: '0'}}, `Analysis History (${runHistory.length} runs)`),
+            e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
+              `Environment: ${selectedEnv.toUpperCase()}`)
           ]),
           
-          e('div', {className: 'commit-item'}, [
-            e('div', {style: {display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}, [
-              e('span', {className: 'commit-hash'}, 'x9y8z7w6'),
-              e('span', {className: 'badge warning'}, 'Testing')
-            ]),
-            e('div', {className: 'commit-meta'}, 'staging • 1 day ago • Mike Johnson'),
-            e('div', {style: {marginTop: '4px'}}, 'fix: resolve database connection timeout')
-          ]),
-          
-          e('div', {className: 'commit-item'}, [
-            e('div', {style: {display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}, [
-              e('span', {className: 'commit-hash'}, 'p7q6r5s4'),
-              e('span', {className: 'badge danger'}, 'Failed')
-            ]),
-            e('div', {className: 'commit-meta'}, 'staging • 2 days ago • Alex Wong'),
-            e('div', {style: {marginTop: '4px'}}, 'config: attempt to update authentication settings')
-          ])
+          // Run list
+          runHistory.map((run, index) => {
+            const badge = getVerdictBadge(run.verdict);
+            const metrics = run.metrics || {};
+            const branches = run.branches || {};
+            
+            return e('div', {
+              key: run.run_id || index,
+              className: 'commit-item',
+              style: {
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                borderLeft: `4px solid ${
+                  run.verdict === 'PASS' ? 'var(--green)' :
+                  run.verdict === 'WARN' ? 'var(--yellow)' :
+                  run.verdict === 'BLOCK' ? 'var(--red)' :
+                  'var(--blue)'
+                }`
+              },
+              onClick: () => handleViewRun(run),
+              onMouseEnter: (e) => {
+                e.currentTarget.style.background = '#f8f9fa';
+                e.currentTarget.style.transform = 'translateX(4px)';
+              },
+              onMouseLeave: (e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'translateX(0)';
+              }
+            }, [
+              // Header row - Run number and verdict
+              e('div', {style: {display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center'}}, [
+                e('div', null, [
+                  e('strong', {style: {fontSize: '16px'}}, `Run #${runHistory.length - index}`),
+                  e('span', {style: {color: 'var(--muted)', marginLeft: '12px', fontSize: '14px'}}, 
+                    formatTimestamp(run.timestamp))
+                ]),
+                e('span', {className: badge.className}, badge.text)
+              ]),
+              
+              // Metrics row
+              e('div', {className: 'commit-meta', style: {marginBottom: '8px'}}, [
+                `${metrics.files_with_drift || 0} files drifted • `,
+                `${metrics.total_deltas || 0} changes • `,
+                `${metrics.policy_violations || 0} violations • `,
+                `Risk: ${metrics.overall_risk_level || 'unknown'}`
+              ]),
+              
+              // Branches info
+              e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginBottom: '4px'}}, [
+                `Golden: ${branches.golden_branch || 'N/A'}`
+              ]),
+              e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginBottom: '8px'}}, [
+                `Drift: ${branches.drift_branch || 'N/A'}`
+              ]),
+              
+              // Execution time
+              e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginBottom: '8px'}}, [
+                `⏱️ Execution time: ${run.execution_time_seconds ? run.execution_time_seconds.toFixed(1) : 'N/A'}s`
+              ]),
+              
+              // View link
+              e('div', {
+                style: {
+                  marginTop: '8px',
+                  color: 'var(--primary)',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }
+              }, [
+                e('span', null, '→ Click to view detailed analysis'),
+                e('span', {style: {fontSize: '12px', color: 'var(--muted)'}}, `(${run.run_id.substring(0, 30)}...)`)
+              ])
+            ]);
+          })
         ]);
       }
       
@@ -775,7 +914,7 @@
         return e('div', {className: 'modal-overlay', onClick: onClose}, [
           e('div', {className: 'modal', onClick: (e) => e.stopPropagation()}, [
             e('h3', null, '🔄 Staging Environment Actions'),
-            e('p', null, `Manage staging deployment for ${issueData.file}`),
+            e('p', null, `Manage staging deployment for ${serviceConfig?.name || serviceId}`),
             e('p', {style: {color: 'var(--yellow)'}}, 'Current Status: Pending Certification Review'),
             
             e('div', {style: {background: '#fff8dc', padding: '12px', borderRadius: '8px', margin: '16px 0'}}, [
