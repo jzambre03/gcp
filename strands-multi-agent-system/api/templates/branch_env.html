@@ -678,19 +678,99 @@
         const showSmartDiff = () => {
           const maskedOld = maskPII(String(old || ''));
           const maskedNew = maskPII(String(newVal || ''));
-          const isLargeBlock = maskedOld.length > 200 || maskedNew.length > 200;
           
-          if (isLargeBlock && locator.value) {
+          // Check if values are multi-line (contain newlines or are objects/arrays)
+          const isMultiLine = maskedOld.includes('\n') || maskedNew.includes('\n') || 
+                             maskedOld.length > 80 || maskedNew.length > 80;
+          
+          // Try to format JSON if it looks like JSON
+          const formatValue = (val) => {
+            try {
+              const parsed = JSON.parse(val);
+              return JSON.stringify(parsed, null, 2);
+            } catch {
+              return val;
+            }
+          };
+          
+          const formattedOld = formatValue(maskedOld);
+          const formattedNew = formatValue(maskedNew);
+          
+          // Split into lines for multi-line display
+          const oldLines = formattedOld.split('\n');
+          const newLines = formattedNew.split('\n');
+          
+          if (isMultiLine || oldLines.length > 1 || newLines.length > 1) {
+            // Multi-line diff with scroll
             return e('div', { key: 'change' }, [
-              e('div', { style: {marginBottom: '8px', color: '#666', fontSize: '13px'} }, 
+              locator.value && e('div', { style: {marginBottom: '8px', color: '#666', fontSize: '13px', fontWeight: '600'} }, 
                 `📍 Changed field: ${locator.value}`
               ),
-              e('div', { className: 'diff-view mono' }, [
-                e('div', { key: 'old', className: 'diff-line del' }, `- ${maskedOld.substring(0, 150)}...`),
-                e('div', { key: 'new', className: 'diff-line add' }, `+ ${maskedNew.substring(0, 150)}...`)
-              ])
+              e('div', { 
+                className: 'diff-view mono',
+                style: {
+                  maxHeight: '400px',
+                  overflowY: 'auto',
+                  overflowX: 'auto',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '6px',
+                  backgroundColor: '#f8f9fa'
+                }
+              }, [
+                // Old value section
+                maskedOld && e('div', { key: 'old-section', style: {borderBottom: '1px solid #e0e0e0'} }, [
+                  e('div', { 
+                    style: {
+                      backgroundColor: '#ffebee', 
+                      padding: '4px 12px', 
+                      fontWeight: '600', 
+                      fontSize: '12px',
+                      color: '#c62828',
+                      borderBottom: '1px solid #ffcdd2'
+                    } 
+                  }, '− Old Value'),
+                  ...oldLines.map((line, i) => 
+                    e('div', { 
+                      key: `old-${i}`, 
+                      className: 'diff-line del',
+                      style: {
+                        padding: '4px 12px',
+                        borderLeft: '3px solid #ef5350',
+                        whiteSpace: 'pre',
+                        wordBreak: 'break-all'
+                      }
+                    }, line || ' ')
+                  )
+                ]),
+                // New value section
+                maskedNew && e('div', { key: 'new-section' }, [
+                  e('div', { 
+                    style: {
+                      backgroundColor: '#e8f5e9', 
+                      padding: '4px 12px', 
+                      fontWeight: '600', 
+                      fontSize: '12px',
+                      color: '#2e7d32',
+                      borderBottom: '1px solid #c8e6c9'
+                    } 
+                  }, '+ New Value'),
+                  ...newLines.map((line, i) => 
+                    e('div', { 
+                      key: `new-${i}`, 
+                      className: 'diff-line add',
+                      style: {
+                        padding: '4px 12px',
+                        borderLeft: '3px solid #66bb6a',
+                        whiteSpace: 'pre',
+                        wordBreak: 'break-all'
+                      }
+                    }, line || ' ')
+                  )
+                ])
+              ].filter(Boolean))
             ]);
           } else {
+            // Single-line compact diff
             return e('div', { key: 'change', className: 'diff-view mono' }, [
               maskedOld && e('div', { key: 'old', className: 'diff-line del' }, `- ${maskedOld}`),
               maskedNew && e('div', { key: 'new', className: 'diff-line add' }, `+ ${maskedNew}`)
