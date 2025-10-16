@@ -637,6 +637,30 @@ async def analyze_service(service_id: str, environment: str, background_tasks: B
     return result
 
 
+@app.get("/run/{run_id}", response_class=HTMLResponse)
+async def view_run_details(request: Request, run_id: str):
+    """
+    View specific analysis run details in a new tab
+    
+    Shows drift analysis results for a specific run ID.
+    This opens in a new browser tab/window for detailed review.
+    """
+    # Extract service_id from run_id (format: run_YYYYMMDD_HHMMSS_service_env_analysis_timestamp)
+    # Example: run_20251015_185827_cxp_credit_services_prod_analysis_1760569065
+    try:
+        parts = run_id.split('_')
+        if len(parts) >= 4:
+            service_id = parts[3]  # cxp_credit_services
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=f"/branch-environment?id={service_id}&run_id={run_id}&tab=deployment", status_code=301)
+    except:
+        pass
+    
+    # Fallback: redirect without service_id, let frontend handle it
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/branch-environment?run_id={run_id}&tab=deployment", status_code=301)
+
+
 @app.get("/service/{service_id}", response_class=HTMLResponse)
 async def service_detail(request: Request, service_id: str):
     """

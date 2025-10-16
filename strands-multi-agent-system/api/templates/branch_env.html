@@ -148,11 +148,20 @@
         const urlParams = new URLSearchParams(window.location.search);
         const serviceId = urlParams.get('id') || 'unknown';
         const tabParam = urlParams.get('tab') || 'overview';  // Support ?tab=deployment parameter
+        const runId = urlParams.get('run_id');  // ✅ Support ?run_id parameter for viewing specific runs
         
         const [activeTab, setActiveTab] = React.useState(tabParam);
         const [showStagingModal, setShowStagingModal] = React.useState(false);
         const [serviceConfig, setServiceConfig] = React.useState(null);
         const [certificationUpdateTrigger, setCertificationUpdateTrigger] = React.useState(0);
+        const [triggerAnalysis, setTriggerAnalysis] = React.useState(0);  // ✅ Counter to trigger analysis
+        
+        // ✅ Auto-switch to Drift Analysis tab if run_id is provided
+        React.useEffect(() => {
+          if (runId) {
+            setActiveTab('deployment');
+          }
+        }, [runId]);
         
         // Note: Removed 'file' parameter as it was unused placeholder code
         
@@ -224,13 +233,14 @@
               e('button', {
                 className: 'btn',
                 onClick: () => {
-                  // Auto-switch to Drift Analysis tab to see results
+                  // Auto-switch to Drift Analysis tab and trigger analysis
                   setActiveTab('deployment');
+                  setTriggerAnalysis(prev => prev + 1);  // ✅ Trigger analysis
                   // Scroll to top for better UX
                   window.scrollTo({top: 0, behavior: 'smooth'});
                 },
                 style: {marginLeft: '16px', backgroundColor: '#4B5563', color: 'white', border: '1px solid #4B5563'}
-              }, '▶️ View Analysis')  // Updated label for clarity
+              }, '▶️ Run Analysis')  // Updated label to reflect action
             ])
           ]),
           
@@ -259,7 +269,7 @@
           // Tab Content (reordered to match tab order)
           activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, certificationUpdateTrigger}),
           activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, onCertificationUpdate: triggerCertificationUpdate}),
-          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: 'prod'}),
+          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: 'prod', triggerAnalysis, runId}),
           activeTab === 'history' && e(HistoryTab, {serviceId, currentEnvironment: 'prod'}),
           
           // Staging Modal
@@ -839,7 +849,7 @@
           }, [
             e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
               e('span', {style: {fontSize: '20px'}}, fileRiskIcon),
-              e('div', null, [
+                e('div', null, [
                 e('div', {style: {fontWeight: '500', fontSize: '14px', color: fileRiskColor}}, fileName),
                 e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
                   `${totalDrifts} drift${totalDrifts !== 1 ? 's' : ''} • ${riskSummary}`)
@@ -934,8 +944,8 @@
                     e('div', {style: {fontWeight: '500', fontSize: '14px', color: riskColor}}, fileName),
                     e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
                       `${fileDrifts.length} drift${fileDrifts.length !== 1 ? 's' : ''}`)
-                  ])
-                ]),
+                ])
+              ]),
                 e('div', {style: {fontSize: '24px', color: riskColor}}, isExpanded ? '−' : '+')
               ]),
               
@@ -953,37 +963,100 @@
       // END OF HELPER COMPONENTS
       // ============================================================================
       
-      function DeploymentTab({serviceId, currentEnvironment}) {
+      function DeploymentTab({serviceId, currentEnvironment, triggerAnalysis, runId}) {
         const [driftData, setDriftData] = React.useState(null);
-        const [loading, setLoading] = React.useState(true);
+        const [loading, setLoading] = React.useState(false);  // ✅ Start with false - no auto-loading
         const [error, setError] = React.useState(null);
         const [activeFilter, setActiveFilter] = React.useState('all');
+        const [hasRunAnalysis, setHasRunAnalysis] = React.useState(false);  // ✅ Track if user has run analysis
+        const [runDetails, setRunDetails] = React.useState(null);  // ✅ Store specific run details
         
-        // Load drift analysis data
-        React.useEffect(() => {
-          const loadDriftData = async () => {
-            if (!serviceId) return;
-            
-            try {
-              setLoading(true);
-              const response = await fetch(`/api/services/${serviceId}/llm-output`);
-              if (!response.ok) {
-                throw new Error('No analysis results available. Run an analysis first.');
-              }
-              const data = await response.json();
-              setDriftData(data.data || {});
-              setError(null);
-            } catch (err) {
-              console.error('Error loading drift data:', err);
-              setError(err.message);
-              setDriftData(null);
-            } finally {
-              setLoading(false);
-            }
-          };
+        // ✅ Function to run analysis (will be called by analyze button)
+        const runAnalysis = React.useCallback(async () => {
+          if (!serviceId) return;
           
-          loadDriftData();
-        }, [serviceId]);
+          try {
+            setLoading(true);
+            setError(null);
+            
+            // Trigger analysis
+            const analyzeResponse = await fetch(`/api/services/${serviceId}/analyze/${currentEnvironment}`, {
+              method: 'POST'
+            });
+            
+            if (!analyzeResponse.ok) {
+              throw new Error('Analysis failed. Please try again.');
+            }
+            
+            // Wait a moment for analysis to complete, then load results
+            setTimeout(async () => {
+              try {
+                const response = await fetch(`/api/services/${serviceId}/llm-output`);
+                if (!response.ok) {
+                  throw new Error('Analysis completed but results not available yet. Please try again.');
+                }
+                const data = await response.json();
+                setDriftData(data.data || {});
+                setHasRunAnalysis(true);
+                setError(null);
+              } catch (err) {
+                console.error('Error loading analysis results:', err);
+                setError(err.message);
+                setDriftData(null);
+              } finally {
+                setLoading(false);
+              }
+            }, 2000); // Wait 2 seconds for analysis to complete
+            
+          } catch (err) {
+            console.error('Error running analysis:', err);
+            setError(err.message);
+            setLoading(false);
+          }
+        }, [serviceId, currentEnvironment]);
+        
+        // ✅ Load specific run data if runId is provided
+        React.useEffect(() => {
+          if (runId) {
+            const loadRunData = async () => {
+              try {
+                setLoading(true);
+                setError(null);
+                
+                // Load run details
+                const runResponse = await fetch(`/api/services/${serviceId}/run/${runId}`);
+                if (!runResponse.ok) {
+                  throw new Error('Run not found or data unavailable');
+                }
+                const runData = await runResponse.json();
+                setRunDetails(runData);
+                
+                // Load drift analysis data for this run
+                const driftResponse = await fetch(`/api/services/${serviceId}/llm-output`);
+                if (driftResponse.ok) {
+                  const driftData = await driftResponse.json();
+                  setDriftData(driftData.data || {});
+                }
+                
+                setHasRunAnalysis(true);
+              } catch (err) {
+                console.error('Error loading run data:', err);
+                setError(err.message);
+              } finally {
+                setLoading(false);
+              }
+            };
+            
+            loadRunData();
+          }
+        }, [runId, serviceId]);
+        
+        // ✅ Respond to trigger from header button
+        React.useEffect(() => {
+          if (triggerAnalysis > 0 && !runId) {  // Only trigger if not viewing specific run
+            runAnalysis();
+          }
+        }, [triggerAnalysis, runAnalysis, runId]);
         
         // Filter functions
         function handleFilterClick(filter) {
@@ -1007,24 +1080,51 @@
         if (loading) {
           return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
             e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '⏳'),
-            e('div', {style: {fontSize: '18px'}}, 'Loading drift analysis...'),
+            e('div', {style: {fontSize: '18px'}}, 'Running drift analysis...'),
             e('div', {className: 'spinner', style: {margin: '20px auto'}})
+          ]);
+        }
+        
+        // ✅ Show "Run Analysis" message by default (when no analysis has been run yet and no specific run requested)
+        if (!hasRunAnalysis && !driftData && !runId) {
+          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
+            e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '🔍'),
+            e('div', {style: {fontSize: '18px', marginBottom: '8px', fontWeight: '600'}}, 'Ready to Analyze'),
+            e('div', {style: {color: 'var(--muted)', marginBottom: '24px'}}, 
+              'Run a drift analysis to see configuration differences and risk assessment'),
+            e('button', {
+              className: 'btn primary',
+              onClick: runAnalysis,
+              style: {fontSize: '16px', padding: '12px 24px'}
+            }, '🚀 Run Drift Analysis')
           ]);
         }
         
         if (error) {
           return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
-            e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '📭'),
-            e('div', {style: {fontSize: '18px', marginBottom: '8px'}}, 'No Analysis Results'),
-            e('div', {style: {color: 'var(--muted)', marginBottom: '16px'}}, error),
-            e('div', {style: {marginTop: '24px'}}, [
-              e('p', {style: {marginBottom: '12px'}}, 'Run an analysis to see drift detection results here')
-            ])
+            e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '❌'),
+            e('div', {style: {fontSize: '18px', marginBottom: '8px'}}, 'Analysis Failed'),
+            e('div', {style: {color: 'var(--muted)', marginBottom: '24px'}}, error),
+            e('button', {
+              className: 'btn primary',
+              onClick: runAnalysis,
+              style: {fontSize: '16px', padding: '12px 24px'}
+            }, '🔄 Try Again')
           ]);
         }
         
         if (!driftData) {
-          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, 'No data available');
+          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
+            e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '📊'),
+            e('div', {style: {fontSize: '18px', marginBottom: '8px'}}, 'No Analysis Data'),
+            e('div', {style: {color: 'var(--muted)', marginBottom: '24px'}}, 
+              'Analysis completed but no data available'),
+            e('button', {
+              className: 'btn primary',
+              onClick: runAnalysis,
+              style: {fontSize: '16px', padding: '12px 24px'}
+            }, '🔄 Run New Analysis')
+          ]);
         }
         
         // Use filtered data for display
@@ -1045,6 +1145,20 @@
         };
         
         return e('div', null, [
+          // ✅ Add header with run info or "Run New Analysis" button
+          e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px'}}, [
+            e('div', {style: {fontSize: '18px', fontWeight: '600'}}, 
+              runId && runDetails ? 
+                `Analysis Run: ${runDetails.run_id} (${runDetails.verdict || 'COMPLETED'})` :
+                'Drift Analysis Results'
+            ),
+            !runId && e('button', {  // Only show "Run New Analysis" if not viewing specific run
+              className: 'btn primary',
+              onClick: runAnalysis,
+              style: {fontSize: '14px', padding: '8px 16px'}
+            }, '🔄 Run New Analysis')
+          ]),
+          
           // 7 Stat Boxes (matching index.html exactly)
           e('div', {className:'stats', style:{margin:'0 0 24px 0'}}, [
             // Summary Statistics (Top Row) - Display only (not clickable)
@@ -1398,9 +1512,10 @@
           return configs[verdict] || { className: 'badge', text: verdict };
         };
         
-        // Handle click to view run details
+        // Handle click to view run details - opens in new tab
         const handleViewRun = (run) => {
-          window.location.href = `/service/${serviceId}?run_id=${run.run_id}&env=${selectedEnv}`;
+          // ✅ Open in new tab with run-specific URL
+          window.open(`/run/${run.run_id}`, '_blank');
         };
         
         if (loading) {
