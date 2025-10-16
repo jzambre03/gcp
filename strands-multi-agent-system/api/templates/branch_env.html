@@ -1023,16 +1023,29 @@
                 setLoading(true);
                 setError(null);
                 
+                // ✅ Extract service_id from run_id as fallback
+                let actualServiceId = serviceId;
+                if (runId.includes('_')) {
+                  const parts = runId.split('_');
+                  // Find environment position
+                  const envPos = parts.findIndex(part => ['prod', 'dev', 'qa', 'staging'].includes(part));
+                  if (envPos > 2) {
+                    const extractedServiceId = parts.slice(2, envPos).join('_');
+                    console.log(`🔍 Frontend extracted service_id: '${extractedServiceId}' from run_id: '${runId}'`);
+                    actualServiceId = extractedServiceId;
+                  }
+                }
+                
                 // Load run details
-                const runResponse = await fetch(`/api/services/${serviceId}/run/${runId}`);
+                const runResponse = await fetch(`/api/services/${actualServiceId}/run/${runId}`);
                 if (!runResponse.ok) {
-                  throw new Error('Run not found or data unavailable');
+                  throw new Error(`Run not found for service '${actualServiceId}' or data unavailable`);
                 }
                 const runData = await runResponse.json();
                 setRunDetails(runData);
                 
                 // Load drift analysis data for this run
-                const driftResponse = await fetch(`/api/services/${serviceId}/llm-output`);
+                const driftResponse = await fetch(`/api/services/${actualServiceId}/llm-output`);
                 if (driftResponse.ok) {
                   const driftData = await driftResponse.json();
                   setDriftData(driftData.data || {});

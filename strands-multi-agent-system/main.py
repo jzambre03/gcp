@@ -648,11 +648,26 @@ async def view_run_details(request: Request, run_id: str):
     # Extract service_id from run_id (format: run_YYYYMMDD_HHMMSS_service_env_analysis_timestamp)
     # Example: run_20251015_185827_cxp_credit_services_prod_analysis_1760569065
     try:
+        # Split by '_' but need to be smarter about service names with underscores
         parts = run_id.split('_')
-        if len(parts) >= 4:
-            service_id = parts[3]  # cxp_credit_services
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url=f"/branch-environment?id={service_id}&run_id={run_id}&tab=deployment", status_code=301)
+        if len(parts) >= 7:  # run_20251015_185827_cxp_credit_services_prod_analysis_1760569065
+            # Service name is between parts[2] and the environment (prod)
+            # Find where 'prod' or environment appears
+            env_positions = []
+            for i, part in enumerate(parts):
+                if part in ['prod', 'dev', 'qa', 'staging']:
+                    env_positions.append(i)
+            
+            if env_positions:
+                env_pos = env_positions[0]
+                # Service name is from parts[2] to env_pos-1
+                service_parts = parts[2:env_pos]
+                service_id = '_'.join(service_parts)  # cxp_credit_services
+                
+                print(f"🔍 Extracted service_id: '{service_id}' from run_id: '{run_id}'")
+                
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=f"/branch-environment?id={service_id}&run_id={run_id}&tab=deployment", status_code=301)
     except:
         pass
     
