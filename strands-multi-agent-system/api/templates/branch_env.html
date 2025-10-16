@@ -295,7 +295,7 @@
           // Tab Content (reordered to match tab order)
           activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, certificationUpdateTrigger}),
           activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, onRecertifyClick: handleRecertifyClick, serviceConfig, serviceId, onCertificationUpdate: triggerCertificationUpdate}),
-          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: currentEnvironmentForAnalysis, triggerAnalysis, runId, persistedDriftData, setPersistedDriftData, persistedHasRunAnalysis, setPersistedHasRunAnalysis}),
+          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: currentEnvironmentForAnalysis, triggerAnalysis, runId, persistedDriftData, setPersistedDriftData, persistedHasRunAnalysis, setPersistedHasRunAnalysis, serviceConfig}),
           activeTab === 'history' && e(HistoryTab, {serviceId, currentEnvironment: 'prod'}),
           
           // Staging Modal
@@ -1025,7 +1025,7 @@
       // END OF HELPER COMPONENTS
       // ============================================================================
       
-      function DeploymentTab({serviceId, currentEnvironment, triggerAnalysis, runId, persistedDriftData, setPersistedDriftData, persistedHasRunAnalysis, setPersistedHasRunAnalysis}) {
+      function DeploymentTab({serviceId, currentEnvironment, triggerAnalysis, runId, persistedDriftData, setPersistedDriftData, persistedHasRunAnalysis, setPersistedHasRunAnalysis, serviceConfig}) {
         const [driftData, setDriftData] = React.useState(persistedDriftData);  // ✅ Initialize from persisted data
         const [loading, setLoading] = React.useState(false);  // ✅ Start with false - no auto-loading
         const [error, setError] = React.useState(null);
@@ -1034,6 +1034,7 @@
         const [runDetails, setRunDetails] = React.useState(null);  // ✅ Store specific run details
         const [selectedFiles, setSelectedFiles] = React.useState({});  // ✅ Track which files are selected for certification
         const [certifying, setCertifying] = React.useState(false);  // ✅ Track certification in progress
+        const [selectedEnvironment, setSelectedEnvironment] = React.useState(currentEnvironment);  // ✅ Local environment selector
         
         // ✅ Helper function to update both local and persisted drift data + sessionStorage
         const updateDriftData = React.useCallback((data) => {
@@ -1074,8 +1075,8 @@
             setLoading(true);
             setError(null);
             
-            // Trigger analysis
-            const analyzeResponse = await fetch(`/api/services/${serviceId}/analyze/${currentEnvironment}`, {
+            // Trigger analysis using the selected environment
+            const analyzeResponse = await fetch(`/api/services/${serviceId}/analyze/${selectedEnvironment}`, {
               method: 'POST'
             });
             
@@ -1109,7 +1110,7 @@
             setError(err.message);
             setLoading(false);
           }
-        }, [serviceId, currentEnvironment]);
+        }, [serviceId, selectedEnvironment]);
         
         // ✅ Load specific run data if runId is provided
         React.useEffect(() => {
@@ -1336,6 +1337,31 @@
             e('div', {style: {fontSize: '18px', marginBottom: '8px', fontWeight: '600'}}, 'Ready to Analyze'),
             e('div', {style: {color: 'var(--muted)', marginBottom: '24px'}}, 
               'Run a drift analysis to see configuration differences and risk assessment'),
+            // Environment Selector
+            e('div', {style: {display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '20px'}}, [
+              e('label', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--ink)'}}, 'Environment:'),
+              e('select', {
+                value: selectedEnvironment,
+                onChange: (e) => setSelectedEnvironment(e.target.value),
+                style: {
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #D1D5DB',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  backgroundColor: 'white',
+                  cursor: 'pointer',
+                  minWidth: '150px'
+                }
+              }, serviceConfig?.environments?.map(env => 
+                e('option', {key: env, value: env}, env.charAt(0).toUpperCase() + env.slice(1))
+              ) || [
+                e('option', {key: 'prod', value: 'prod'}, 'Production'),
+                e('option', {key: 'dev', value: 'dev'}, 'Development'),
+                e('option', {key: 'qa', value: 'qa'}, 'QA'),
+                e('option', {key: 'staging', value: 'staging'}, 'Staging')
+              ])
+            ]),
             e('button', {
               className: 'btn primary',
               onClick: runAnalysis,
@@ -1389,18 +1415,44 @@
         };
         
         return e('div', null, [
-          // ✅ Add header with run info or "Run New Analysis" button
+          // ✅ Add header with run info, environment selector, and "Run New Analysis" button
           e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px'}}, [
             e('div', {style: {fontSize: '18px', fontWeight: '600'}}, 
               runId && runDetails ? 
                 `Analysis Run: ${runDetails.run_id} (${runDetails.verdict || 'COMPLETED'})` :
                 'Drift Analysis Results'
             ),
-            !runId && e('button', {  // Only show "Run New Analysis" if not viewing specific run
-              className: 'btn primary',
-              onClick: runAnalysis,
-              style: {fontSize: '14px', padding: '8px 16px'}
-            }, '🔄 Run New Analysis')
+            !runId && e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
+              // Environment Selector
+              e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
+                e('label', {style: {fontSize: '13px', fontWeight: '600', color: 'var(--ink)'}}, 'Environment:'),
+                e('select', {
+                  value: selectedEnvironment,
+                  onChange: (e) => setSelectedEnvironment(e.target.value),
+                  style: {
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #D1D5DB',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    backgroundColor: 'white',
+                    cursor: 'pointer'
+                  }
+                }, serviceConfig?.environments?.map(env => 
+                  e('option', {key: env, value: env}, env.charAt(0).toUpperCase() + env.slice(1))
+                ) || [
+                  e('option', {key: 'prod', value: 'prod'}, 'Production'),
+                  e('option', {key: 'dev', value: 'dev'}, 'Development'),
+                  e('option', {key: 'qa', value: 'qa'}, 'QA'),
+                  e('option', {key: 'staging', value: 'staging'}, 'Staging')
+                ])
+              ]),
+              e('button', {  // "Run New Analysis" button
+                className: 'btn primary',
+                onClick: runAnalysis,
+                style: {fontSize: '14px', padding: '8px 16px'}
+              }, '🔄 Run New Analysis')
+            ])
           ]),
           
           // ✅ File Selection Controls & Certify Button
