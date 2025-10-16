@@ -124,8 +124,9 @@ def switch_to_branch(repo: git.Repo, branch_name: str) -> Optional[str]:
         return None
 
 def is_config_file(file_path: str) -> bool:
-    config_extensions = {'.yml', '.yaml', '.json', '.env', '.ini', '.cfg', '.conf', '.toml', '.xml', '.properties', '.config'}
-    config_filenames = {'dockerfile', 'docker-compose', 'makefile', 'requirements.txt', 'package.json', 'package-lock.json', 'poetry.lock', 'pipfile', 'setup.py', 'setup.cfg', 'pyproject.toml', '.gitignore', '.dockerignore', 'webpack.config.js', 'babel.config.js'}
+    # Exclude .json files from config analysis as per requirement
+    config_extensions = {'.yml', '.yaml', '.env', '.ini', '.cfg', '.conf', '.toml', '.xml', '.properties', '.config'}
+    config_filenames = {'dockerfile', 'docker-compose', 'makefile', 'requirements.txt', 'poetry.lock', 'pipfile', 'setup.py', 'setup.cfg', 'pyproject.toml', '.gitignore', '.dockerignore', 'webpack.config.js', 'babel.config.js'}
     file_name = Path(file_path).name.lower()
     file_suffix = Path(file_path).suffix.lower()
     return (file_suffix in config_extensions or file_name in config_filenames or (not file_suffix and file_name in {'dockerfile', 'makefile', 'jenkinsfile'}))
@@ -149,15 +150,16 @@ def get_config_file_paths(repo: git.Repo, target_folder: str = None) -> List[str
 
     """
     Get list of configuration files in the repository.
+    Excludes .json files as per requirement.
     """
     config_extensions = {
-        '.yml', '.yaml', '.json', '.env', '.ini', '.cfg', '.conf',
+        '.yml', '.yaml', '.env', '.ini', '.cfg', '.conf',
         '.toml', '.xml', '.properties', '.config'
     }
     
     config_filenames = {
         'dockerfile', 'docker-compose', 'makefile', 'requirements.txt',
-        'package.json', 'package-lock.json', 'poetry.lock', 'pipfile',
+        'poetry.lock', 'pipfile',
         'setup.py', 'setup.cfg', 'pyproject.toml', '.gitignore',
         '.dockerignore', 'webpack.config.js', 'babel.config.js'
     }
@@ -656,9 +658,9 @@ class ConfigCollectorAgent(Agent):
             logger.info(f"Creating config-only drift branch: {drift_branch} from {main_branch}...")
             
             # Define config paths to include (matches drift_v1.py classification)
-            # Excludes .json and .xml as per user request
+            # Excludes .json files as per requirement
             config_paths = [
-                "*.yml", "*.yaml",              # YAML config files
+                "*.yml", "*.yaml",             # YAML config files
                 "*.properties",                 # Properties files
                 "*.toml", "*.ini",              # TOML/INI config files
                 "*.cfg", "*.conf", "*.config",  # Configuration files
@@ -666,7 +668,7 @@ class ConfigCollectorAgent(Agent):
                 # Build files (also analyzed for config changes)
                 "pom.xml", "build.gradle", "build.gradle.kts",
                 "settings.gradle", "settings.gradle.kts",
-                "package.json", "requirements.txt", "pyproject.toml", "go.mod"
+                "requirements.txt", "pyproject.toml", "go.mod"
             ]
             
             success = create_config_only_branch(

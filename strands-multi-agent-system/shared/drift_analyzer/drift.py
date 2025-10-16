@@ -180,7 +180,8 @@ def semantic_config_diff(g_root: Path, c_root: Path, changed_paths: List[str]) -
         
         p_g = g_root / rel
         p_c = c_root / rel
-        if p_c.suffix.lower() not in (".yml",".yaml",".json",".properties",".toml",".ini",".cfg",".conf"):
+        # Exclude .json files from semantic config diff as per requirement
+        if p_c.suffix.lower() not in (".yml",".yaml",".properties",".toml",".ini",".cfg",".conf"):
             continue
         def parse_any(p: Path) -> Optional[Dict[str, Any]]:
             return _parse_config_file(p)

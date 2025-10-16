@@ -59,11 +59,12 @@ def _file_type(p: Path) -> str:
     parts = [s.lower() for s in p.parts]
     if name.startswith("jenkinsfile"): return "ci"
     if name in ("pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
-                "package.json", "requirements.txt", "pyproject.toml", "go.mod"): return "build"
-    if ext in (".yml",".yaml",".json",".toml",".ini",".cfg",".conf",".properties",".config",".xml"): return "config"
+                "requirements.txt", "pyproject.toml", "go.mod"): return "build"
+    # Exclude .json files from config classification as per requirement
+    if ext in (".yml",".yaml",".toml",".ini",".cfg",".conf",".properties",".config",".xml"): return "config"
     if ext in (".tf",".tfvars") or "terraform" in parts: return "infra"
     if ext in (".sql",".db",".ddl"): return "schema"
-    if ext in (".java",".py",".go",".ts",".js",".cs",".groovy",".kts",".gradle",".sh",".bat",".ps1",".rb",".php",
+    if ext in (".java",".py",".go",".ts",".js",".json",".cs",".groovy",".kts",".gradle",".sh",".bat",".ps1",".rb",".php",
                ".c",".cpp",".h",".hpp",".html",".css",".md",".txt",".csv",".tsv"): return "code"
     return "other"
 

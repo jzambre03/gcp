@@ -78,8 +78,7 @@ DEFAULT_CONFIG_PATHS = [
     "build.gradle.kts",        # Gradle Kotlin build file
     "settings.gradle",         # Gradle settings
     "settings.gradle.kts",     # Gradle Kotlin settings
-    "package.json",            # NPM package file
-    "requirements.txt",        # Python requirements
+    "requirements.txt",        # Python requirements (excluded package.json)
     "pyproject.toml",          # Python project file
     "go.mod",                  # Go module file
 ]
