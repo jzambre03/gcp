@@ -1035,6 +1035,30 @@
         const [selectedFiles, setSelectedFiles] = React.useState({});  // ✅ Track which files are selected for certification
         const [certifying, setCertifying] = React.useState(false);  // ✅ Track certification in progress
         const [selectedEnvironment, setSelectedEnvironment] = React.useState(currentEnvironment);  // ✅ Local environment selector
+        const [goldenBranchStatus, setGoldenBranchStatus] = React.useState(null);  // ✅ Track golden branch existence
+        const [checkingGoldenBranch, setCheckingGoldenBranch] = React.useState(false);  // ✅ Track golden branch check
+        
+        // ✅ Check if golden branch exists for the selected environment
+        const checkGoldenBranch = React.useCallback(async (environment) => {
+          if (!serviceId || !environment) return;
+          
+          try {
+            setCheckingGoldenBranch(true);
+            const response = await fetch(`/api/services/${serviceId}/validate-golden/${environment}`);
+            const data = await response.json();
+            setGoldenBranchStatus(data);
+          } catch (err) {
+            console.error('Error checking golden branch:', err);
+            setGoldenBranchStatus({ golden_exists: false });
+          } finally {
+            setCheckingGoldenBranch(false);
+          }
+        }, [serviceId]);
+        
+        // ✅ Check golden branch when environment changes
+        React.useEffect(() => {
+          checkGoldenBranch(selectedEnvironment);
+        }, [selectedEnvironment, checkGoldenBranch]);
         
         // ✅ Helper function to update both local and persisted drift data + sessionStorage
         const updateDriftData = React.useCallback((data) => {
@@ -1070,6 +1094,12 @@
         // ✅ Function to run analysis (will be called by analyze button)
         const runAnalysis = React.useCallback(async () => {
           if (!serviceId) return;
+          
+          // ✅ Check if golden branch exists before running analysis
+          if (!goldenBranchStatus?.golden_exists) {
+            setError(`Cannot run analysis: No golden branch exists for ${selectedEnvironment} environment. Please certify this environment first.`);
+            return;
+          }
           
           try {
             setLoading(true);
@@ -1110,7 +1140,7 @@
             setError(err.message);
             setLoading(false);
           }
-        }, [serviceId, selectedEnvironment]);
+        }, [serviceId, selectedEnvironment, goldenBranchStatus]);
         
         // ✅ Load specific run data if runId is provided
         React.useEffect(() => {
@@ -1362,11 +1392,37 @@
                 e('option', {key: 'staging', value: 'staging'}, 'Staging')
               ])
             ]),
+            // ✅ Warning box if no golden branch exists
+            goldenBranchStatus && !goldenBranchStatus.golden_exists && e('div', {
+              style: {
+                backgroundColor: '#FFF3CD',
+                border: '2px solid #FFC107',
+                borderRadius: '8px',
+                padding: '16px 20px',
+                marginBottom: '20px',
+                maxWidth: '500px',
+                margin: '0 auto 20px auto'
+              }
+            }, [
+              e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px'}}, [
+                e('div', {style: {fontSize: '24px'}}, '⚠️'),
+                e('div', {style: {fontSize: '16px', fontWeight: '600', color: '#856404'}}, 'Environment Not Certified')
+              ]),
+              e('div', {style: {fontSize: '14px', color: '#856404', lineHeight: '1.5'}}, 
+                `The ${selectedEnvironment} environment has no golden branch. Please certify this environment in the "Certifications" tab before running drift analysis.`
+              )
+            ]),
             e('button', {
               className: 'btn primary',
               onClick: runAnalysis,
-              style: {fontSize: '16px', padding: '12px 24px'}
-            }, '🚀 Run Drift Analysis')
+              disabled: !goldenBranchStatus?.golden_exists || checkingGoldenBranch,
+              style: {
+                fontSize: '16px',
+                padding: '12px 24px',
+                opacity: (!goldenBranchStatus?.golden_exists || checkingGoldenBranch) ? 0.5 : 1,
+                cursor: (!goldenBranchStatus?.golden_exists || checkingGoldenBranch) ? 'not-allowed' : 'pointer'
+              }
+            }, checkingGoldenBranch ? 'Checking...' : '🚀 Run Drift Analysis')
           ]);
         }
         
@@ -1450,8 +1506,36 @@
               e('button', {  // "Run New Analysis" button
                 className: 'btn primary',
                 onClick: runAnalysis,
-                style: {fontSize: '14px', padding: '8px 16px'}
-              }, '🔄 Run New Analysis')
+                disabled: !goldenBranchStatus?.golden_exists || checkingGoldenBranch,
+                style: {
+                  fontSize: '14px',
+                  padding: '8px 16px',
+                  opacity: (!goldenBranchStatus?.golden_exists || checkingGoldenBranch) ? 0.6 : 1,
+                  cursor: (!goldenBranchStatus?.golden_exists || checkingGoldenBranch) ? 'not-allowed' : 'pointer'
+                }
+              }, checkingGoldenBranch ? 'Checking...' : '🔄 Run New Analysis')
+            ])
+          ]),
+          
+          // ✅ Warning banner if no golden branch exists (shown in results view)
+          !runId && goldenBranchStatus && !goldenBranchStatus.golden_exists && e('div', {
+            style: {
+              backgroundColor: '#FFF3CD',
+              border: '2px solid #FFC107',
+              borderRadius: '8px',
+              padding: '16px 20px',
+              marginBottom: '24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }
+          }, [
+            e('div', {style: {fontSize: '24px'}}, '⚠️'),
+            e('div', null, [
+              e('div', {style: {fontSize: '15px', fontWeight: '600', color: '#856404', marginBottom: '4px'}}, 'Environment Not Certified'),
+              e('div', {style: {fontSize: '13px', color: '#856404'}}, 
+                `The ${selectedEnvironment} environment has no golden branch. Please certify in the "Certifications" tab.`
+              )
             ])
           ]),
           
