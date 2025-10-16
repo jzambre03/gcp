@@ -184,24 +184,24 @@
               onClick: () => setActiveTab('overview')
             }, 'Overview'),
             e('button', {
-              className: `tab ${activeTab === 'deployment' ? 'active' : ''}`,
-              onClick: () => setActiveTab('deployment')
-            }, 'Deployment Pipeline'),
-            e('button', {
               className: `tab ${activeTab === 'certifications' ? 'active' : ''}`,
               onClick: () => setActiveTab('certifications')
             }, 'Certifications'),
             e('button', {
+              className: `tab ${activeTab === 'deployment' ? 'active' : ''}`,
+              onClick: () => setActiveTab('deployment')
+            }, 'Drift Analysis'),
+            e('button', {
               className: `tab ${activeTab === 'history' ? 'active' : ''}`,
               onClick: () => setActiveTab('history')
-            }, 'Analysis History')  // ✅ Updated: Better name for what it shows
+            }, 'Analysis History')
           ]),
           
-          // Tab Content
+          // Tab Content (reordered to match tab order)
           activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, certificationUpdateTrigger}),
-          activeTab === 'deployment' && e(DeploymentTab, {issueData, onStagingClick: handleStagingClick}),
           activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, onCertificationUpdate: triggerCertificationUpdate}),
-          activeTab === 'history' && e(HistoryTab, {serviceId, currentEnvironment: 'prod'}),  // ✅ Updated: Pass serviceId and environment
+          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: 'prod'}),
+          activeTab === 'history' && e(HistoryTab, {serviceId, currentEnvironment: 'prod'}),
           
           // Staging Modal
           showStagingModal && e(StagingModal, {
@@ -481,43 +481,294 @@
         ]);
       }
       
-      function DeploymentTab({issueData, onStagingClick}) {
+      function DeploymentTab({serviceId, currentEnvironment}) {
+        const [driftData, setDriftData] = React.useState(null);
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState(null);
+        const [selectedCategory, setSelectedCategory] = React.useState('all');
+        
+        // Load drift analysis data
+        React.useEffect(() => {
+          const loadDriftData = async () => {
+            if (!serviceId) return;
+            
+            try {
+              setLoading(true);
+              const response = await fetch(`/api/services/${serviceId}/llm-output`);
+              if (!response.ok) {
+                throw new Error('No analysis results available. Run an analysis first.');
+              }
+              const data = await response.json();
+              setDriftData(data.data || {});
+              setError(null);
+            } catch (err) {
+              console.error('Error loading drift data:', err);
+              setError(err.message);
+              setDriftData(null);
+            } finally {
+              setLoading(false);
+            }
+          };
+          
+          loadDriftData();
+        }, [serviceId]);
+        
+        // Get risk color
+        const getRiskColor = (category) => {
+          const colors = {
+            'high': 'var(--red)',
+            'medium': 'var(--yellow)',
+            'low': 'var(--blue)',
+            'allowed_variance': 'var(--green)'
+          };
+          return colors[category] || 'var(--muted)';
+        };
+        
+        // Get risk badge
+        const getRiskBadge = (category) => {
+          const badges = {
+            'high': { className: 'badge danger', text: '🔴 HIGH RISK' },
+            'medium': { className: 'badge warning', text: '⚠️ MEDIUM RISK' },
+            'low': { className: 'badge', text: '🔵 LOW RISK' },
+            'allowed_variance': { className: 'badge success', text: '✅ ALLOWED' }
+          };
+          return badges[category] || { className: 'badge', text: category.toUpperCase() };
+        };
+        
+        if (loading) {
+          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
+            e('div', {style: {fontSize: '24px', marginBottom: '16px'}}, '⏳'),
+            e('div', null, 'Loading drift analysis...')
+          ]);
+        }
+        
+        if (error) {
+          return e('div', {className: 'card', style: {textAlign: 'center', padding: '40px'}}, [
+            e('div', {style: {fontSize: '48px', marginBottom: '16px'}}, '📭'),
+            e('div', {style: {fontSize: '18px', marginBottom: '8px'}}, 'No Analysis Results'),
+            e('div', {style: {color: 'var(--muted)', marginBottom: '16px'}}, error),
+            e('div', {style: {marginTop: '24px'}}, [
+              e('p', {style: {marginBottom: '12px'}}, 'Click "Analyze" button to run configuration drift detection'),
+              e('button', {
+                className: 'btn',
+                onClick: () => window.location.reload()
+              }, 'Refresh Page')
+            ])
+          ]);
+        }
+        
+        if (!driftData) {
+          return e('div', {className: 'card'}, e('div', null, 'No data available'));
+        }
+        
+        // Get drift items by category
+        const highRisk = driftData.high || [];
+        const mediumRisk = driftData.medium || [];
+        const lowRisk = driftData.low || [];
+        const allowedVariance = driftData.allowed_variance || [];
+        
+        // Filter based on selected category
+        const allDrifts = [
+          ...highRisk.map(d => ({...d, category: 'high'})),
+          ...mediumRisk.map(d => ({...d, category: 'medium'})),
+          ...lowRisk.map(d => ({...d, category: 'low'})),
+          ...allowedVariance.map(d => ({...d, category: 'allowed_variance'}))
+        ];
+        
+        const filteredDrifts = selectedCategory === 'all' 
+          ? allDrifts 
+          : allDrifts.filter(d => d.category === selectedCategory);
+        
         return e('div', {className: 'grid'}, [
           e('div', {className: 'card'}, [
-            e('h3', {style: {margin: '0 0 20px 0'}}, 'Deployment Pipeline Status'),
-            
-            // Production Deployment
-            e('div', {className: 'commit-item', style: {borderColor: 'var(--green)'}}, [
-              e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}, [
-                e('div', null, [
-                  e('h4', {style: {margin: '0', color: 'var(--green)'}}, 'Production'),
-                  e('div', {className: 'commit-meta'}, 'Branch: main • Last deployed: 2 hours ago')
+            // Header with summary
+            e('div', {style: {marginBottom: '24px'}}, [
+              e('h3', {style: {margin: '0 0 16px 0'}}, 'Configuration Drift Analysis'),
+              e('div', {style: {display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px'}}, [
+                // High Risk Card
+                e('div', {
+                  style: {
+                    padding: '12px',
+                    background: highRisk.length > 0 ? '#ffebe9' : '#f5f5f5',
+                    borderRadius: '6px',
+                    borderLeft: `4px solid ${highRisk.length > 0 ? 'var(--red)' : '#ddd'}`
+                  }
+                }, [
+                  e('div', {style: {fontSize: '24px', fontWeight: 'bold', color: 'var(--red)'}}, highRisk.length),
+                  e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginTop: '4px'}}, 'High Risk')
                 ]),
-                e('span', {className: 'badge success'}, 'Active')
-              ]),
-              e('div', {className: 'deployment-actions'}, [
-                e('button', {className: 'btn success'}, 'View Logs'),
-                e('button', {className: 'btn'}, 'Rollback')
+                
+                // Medium Risk Card
+                e('div', {
+                  style: {
+                    padding: '12px',
+                    background: mediumRisk.length > 0 ? '#fff8e1' : '#f5f5f5',
+                    borderRadius: '6px',
+                    borderLeft: `4px solid ${mediumRisk.length > 0 ? 'var(--yellow)' : '#ddd'}`
+                  }
+                }, [
+                  e('div', {style: {fontSize: '24px', fontWeight: 'bold', color: 'var(--yellow)'}}, mediumRisk.length),
+                  e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginTop: '4px'}}, 'Medium Risk')
+                ]),
+                
+                // Low Risk Card
+                e('div', {
+                  style: {
+                    padding: '12px',
+                    background: lowRisk.length > 0 ? '#e3f2fd' : '#f5f5f5',
+                    borderRadius: '6px',
+                    borderLeft: `4px solid ${lowRisk.length > 0 ? 'var(--blue)' : '#ddd'}`
+                  }
+                }, [
+                  e('div', {style: {fontSize: '24px', fontWeight: 'bold', color: 'var(--blue)'}}, lowRisk.length),
+                  e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginTop: '4px'}}, 'Low Risk')
+                ]),
+                
+                // Allowed Variance Card
+                e('div', {
+                  style: {
+                    padding: '12px',
+                    background: allowedVariance.length > 0 ? '#e8f5e9' : '#f5f5f5',
+                    borderRadius: '6px',
+                    borderLeft: `4px solid ${allowedVariance.length > 0 ? 'var(--green)' : '#ddd'}`
+                  }
+                }, [
+                  e('div', {style: {fontSize: '24px', fontWeight: 'bold', color: 'var(--green)'}}, allowedVariance.length),
+                  e('div', {style: {fontSize: '12px', color: 'var(--muted)', marginTop: '4px'}}, 'Allowed')
+                ])
               ])
             ]),
             
-            // Staging Deployment - Clickable
-            e('div', {className: 'commit-item', style: {borderColor: 'var(--yellow)', cursor: 'pointer'}, onClick: onStagingClick}, [
-              e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}, [
-                e('div', null, [
-                  e('h4', {style: {margin: '0', color: 'var(--yellow)'}}, 'Staging'),
-                  e('div', {className: 'commit-meta'}, 'Branch: staging • Pending deployment • Click to manage')
-                ]),
-                e('div', {style: {display: 'flex', gap: '8px'}}, [
-                  e('span', {className: 'badge warning'}, 'Pending'),
-                  e('span', {style: {color: 'var(--muted)'}}, '→')
-                ])
-              ]),
-              e('div', {className: 'deployment-actions'}, [
-                e('button', {className: 'btn warning', onClick: (e) => {e.stopPropagation(); onStagingClick()}}, 'Deploy to Staging'),
-                e('button', {className: 'btn'}, 'Review Changes')
-              ])
-            ])
+            // Category filter buttons
+            e('div', {style: {display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap'}}, [
+              e('button', {
+                className: `btn ${selectedCategory === 'all' ? 'success' : ''}`,
+                style: {fontSize: '13px'},
+                onClick: () => setSelectedCategory('all')
+              }, `All (${allDrifts.length})`),
+              e('button', {
+                className: `btn ${selectedCategory === 'high' ? 'danger' : ''}`,
+                style: {fontSize: '13px'},
+                onClick: () => setSelectedCategory('high')
+              }, `High (${highRisk.length})`),
+              e('button', {
+                className: `btn ${selectedCategory === 'medium' ? 'warning' : ''}`,
+                style: {fontSize: '13px'},
+                onClick: () => setSelectedCategory('medium')
+              }, `Medium (${mediumRisk.length})`),
+              e('button', {
+                className: `btn ${selectedCategory === 'low' ? '' : ''}`,
+                style: {fontSize: '13px'},
+                onClick: () => setSelectedCategory('low')
+              }, `Low (${lowRisk.length})`),
+              e('button', {
+                className: `btn ${selectedCategory === 'allowed_variance' ? 'success' : ''}`,
+                style: {fontSize: '13px'},
+                onClick: () => setSelectedCategory('allowed_variance')
+              }, `Allowed (${allowedVariance.length})`)
+            ]),
+            
+            // Drift items list
+            filteredDrifts.length === 0 ? 
+              e('div', {style: {textAlign: 'center', padding: '40px', color: 'var(--muted)'}}, 
+                `No ${selectedCategory === 'all' ? '' : selectedCategory + ' '}drift items found`) :
+              
+              filteredDrifts.map((drift, index) => {
+                const badge = getRiskBadge(drift.category);
+                const riskColor = getRiskColor(drift.category);
+                
+                return e('div', {
+                  key: drift.id || index,
+                  className: 'commit-item',
+                  style: {
+                    borderLeft: `4px solid ${riskColor}`,
+                    marginBottom: '12px'
+                  }
+                }, [
+                  // Header
+                  e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px'}}, [
+                    e('div', {style: {flex: 1}}, [
+                      e('div', {style: {fontSize: '16px', fontWeight: '600', marginBottom: '4px'}}, 
+                        drift.locator?.value || drift.file),
+                      e('div', {style: {fontSize: '13px', color: 'var(--muted)'}}, 
+                        `📄 ${drift.file}`)
+                    ]),
+                    e('span', {className: badge.className, style: {flexShrink: 0}}, badge.text)
+                  ]),
+                  
+                  // Change details
+                  e('div', {style: {display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px'}}, [
+                    e('div', {style: {
+                      padding: '8px',
+                      background: '#ffebe9',
+                      borderRadius: '4px',
+                      fontSize: '13px'
+                    }}, [
+                      e('div', {style: {fontWeight: '600', marginBottom: '4px', color: 'var(--red)'}}, '- Old Value:'),
+                      e('code', {style: {fontSize: '12px'}}, JSON.stringify(drift.old))
+                    ]),
+                    e('div', {style: {
+                      padding: '8px',
+                      background: '#e6ffed',
+                      borderRadius: '4px',
+                      fontSize: '13px'
+                    }}, [
+                      e('div', {style: {fontWeight: '600', marginBottom: '4px', color: 'var(--green)'}}, '+ New Value:'),
+                      e('code', {style: {fontSize: '12px'}}, JSON.stringify(drift.new))
+                    ])
+                  ]),
+                  
+                  // Why & Impact
+                  drift.why && e('div', {style: {marginBottom: '8px'}}, [
+                    e('div', {style: {fontSize: '13px', fontWeight: '600', marginBottom: '4px'}}, '📝 What Changed:'),
+                    e('div', {style: {fontSize: '13px', color: '#555'}}, drift.why)
+                  ]),
+                  
+                  drift.impact && e('div', {style: {marginBottom: '8px'}}, [
+                    e('div', {style: {fontSize: '13px', fontWeight: '600', marginBottom: '4px'}}, '⚠️ Impact:'),
+                    e('div', {style: {fontSize: '13px', color: '#555'}}, drift.impact)
+                  ]),
+                  
+                  // AI Review Assistant (if available)
+                  drift.ai_review_assistant && e('div', {
+                    style: {
+                      marginTop: '12px',
+                      padding: '12px',
+                      background: '#fff8dc',
+                      borderRadius: '6px',
+                      border: '1px solid #ffe082'
+                    }
+                  }, [
+                    e('div', {style: {fontSize: '13px', fontWeight: '600', marginBottom: '8px', color: '#f57c00'}}, 
+                      '🤖 AI Review Assistant'),
+                    
+                    drift.ai_review_assistant.potential_risk && e('div', {style: {marginBottom: '8px'}}, [
+                      e('div', {style: {fontSize: '12px', fontWeight: '600', marginBottom: '4px'}}, 'Potential Risk:'),
+                      e('div', {style: {fontSize: '12px'}}, drift.ai_review_assistant.potential_risk)
+                    ]),
+                    
+                    drift.ai_review_assistant.suggested_action && e('div', null, [
+                      e('div', {style: {fontSize: '12px', fontWeight: '600', marginBottom: '4px'}}, 'Suggested Action:'),
+                      e('div', {style: {fontSize: '12px'}}, drift.ai_review_assistant.suggested_action)
+                    ])
+                  ]),
+                  
+                  // Remediation snippet (if available)
+                  drift.remediation?.snippet && e('div', {
+                    style: {
+                      marginTop: '12px',
+                      padding: '8px',
+                      background: '#f5f5f5',
+                      borderRadius: '4px',
+                      fontFamily: 'monospace',
+                      fontSize: '12px'
+                    }
+                  }, [
+                    e('div', {style: {fontWeight: '600', marginBottom: '4px'}}, '💡 Recommended Fix:'),
+                    e('code', null, drift.remediation.snippet)
+                  ])
+                ]);
+              })
           ])
         ]);
       }
