@@ -34,6 +34,8 @@
     .header{margin-bottom:32px}
     .back-btn{margin-bottom:16px}
     .title{font-size:24px;font-weight:700;margin:0 0 8px 0;display:flex;align-items:center;gap:12px}
+    .drift-title{font-weight:500; font-size: 14px; line-height: 1.4;}
+    .chip{display:inline-block; background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;font-weight:500;}
     .subtitle{color:var(--muted);margin:0}
     
     .issue-alert{background:var(--red-bg);border:2px solid var(--red);border-radius:12px;padding:16px;margin-bottom:24px}
@@ -142,14 +144,15 @@
       const e = React.createElement;
       
       function BranchEnvironmentPage() {
-        const [activeTab, setActiveTab] = React.useState('overview');
+        // Get URL parameters first to determine initial tab
+        const urlParams = new URLSearchParams(window.location.search);
+        const serviceId = urlParams.get('id') || 'unknown';
+        const tabParam = urlParams.get('tab') || 'overview';  // Support ?tab=deployment parameter
+        
+        const [activeTab, setActiveTab] = React.useState(tabParam);
         const [showStagingModal, setShowStagingModal] = React.useState(false);
         const [serviceConfig, setServiceConfig] = React.useState(null);
         const [certificationUpdateTrigger, setCertificationUpdateTrigger] = React.useState(0);
-        
-        // Get URL parameters to identify the service
-        const urlParams = new URLSearchParams(window.location.search);
-        const serviceId = urlParams.get('id') || 'unknown';
         
         // Note: Removed 'file' parameter as it was unused placeholder code
         
@@ -221,11 +224,13 @@
               e('button', {
                 className: 'btn',
                 onClick: () => {
-                  // Trigger analysis - you can customize this
-                  window.location.href = `/service/${serviceId}`;
+                  // Auto-switch to Drift Analysis tab to see results
+                  setActiveTab('deployment');
+                  // Scroll to top for better UX
+                  window.scrollTo({top: 0, behavior: 'smooth'});
                 },
                 style: {marginLeft: '16px', backgroundColor: '#4B5563', color: 'white', border: '1px solid #4B5563'}
-              }, '▶️ Analyze')
+              }, '▶️ View Analysis')  // Updated label for clarity
             ])
           ]),
           
@@ -715,7 +720,7 @@
         return e('div', {className: 'card issue-card'}, [
             e('div', { className: 'issue-header', onClick: () => setOpen(!open) }, [
                 e('div', { className: 'issue-summary' }, [
-                    e('p', {className: 'title'}, maskPII(item.why || item.headline)),
+                    e('p', {className: 'drift-title'}, maskPII(item.why || item.headline)),
                     e('div', {className: 'issue-meta'}, [
                         e('span', {className:'chip', style:{backgroundColor: `var(--${riskVar})`, color: 'white'}}, String(bucket).toUpperCase()),
                         e('span', {className: 'chip'}, getChangeType(item)),
@@ -740,7 +745,7 @@
       const AllowedVarianceIssue = ({item}) => e('div', {className:'card', style:{padding:'16px'}}, [
         e('div', {style:{display: 'flex', alignItems: 'center', gap:'12px', marginBottom: '8px'}}, [
             e('div', {className:'chip', style:{background:'#F3F4F6', color:'#6B7280', border:'1px solid #D1D5DB'}}, 'ALLOWED'),
-            e('p', {className: 'title', style:{margin:0, flex: 1}}, item.rationale || item.why)
+            e('p', {className: 'drift-title', style:{margin:0, flex: 1}}, item.rationale || item.why)
         ]),
         e('div', {className: 'issue-meta', style:{borderTop: '1px solid var(--line)', paddingTop: '8px'}}, [
             e(LocatorPill, {loc: item.locator}),
@@ -835,7 +840,7 @@
             e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
               e('span', {style: {fontSize: '20px'}}, fileRiskIcon),
               e('div', null, [
-                e('div', {style: {fontWeight: '600', fontSize: '16px', color: fileRiskColor}}, fileName),
+                e('div', {style: {fontWeight: '500', fontSize: '14px', color: fileRiskColor}}, fileName),
                 e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
                   `${totalDrifts} drift${totalDrifts !== 1 ? 's' : ''} • ${riskSummary}`)
               ])
@@ -845,25 +850,25 @@
           
           isExpanded && e('div', {style: {padding: '0'}}, [
             riskCounts.high > 0 && e('div', {style: {marginBottom: '16px'}}, [
-              e('h3', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--vz-red)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🔴 High Risk'),
+              e('h3', {style: {fontSize: '12px', fontWeight: '600', color: 'var(--vz-red)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🔴 High Risk'),
               e('div', {className: 'grid-issues'}, drifts.filter(d => d._riskLevel === 'high').map((drift, i) => 
                 e(Issue, {key: i, item: drift, bucket: 'high'})
               ))
             ]),
             riskCounts.medium > 0 && e('div', {style: {marginBottom: '16px'}}, [
-              e('h3', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--med)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🟠 Medium Risk'),
+              e('h3', {style: {fontSize: '12px', fontWeight: '600', color: 'var(--med)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🟠 Medium Risk'),
               e('div', {className: 'grid-issues'}, drifts.filter(d => d._riskLevel === 'medium').map((drift, i) => 
                 e(Issue, {key: i, item: drift, bucket: 'medium'})
               ))
             ]),
             riskCounts.low > 0 && e('div', {style: {marginBottom: '16px'}}, [
-              e('h3', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--low)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🟢 Low Risk'),
+              e('h3', {style: {fontSize: '12px', fontWeight: '600', color: 'var(--low)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '🟢 Low Risk'),
               e('div', {className: 'grid-issues'}, drifts.filter(d => d._riskLevel === 'low').map((drift, i) => 
                 e(Issue, {key: i, item: drift, bucket: 'low'})
               ))
             ]),
             riskCounts.allowed > 0 && e('div', {style: {marginBottom: '16px'}}, [
-              e('h3', {style: {fontSize: '14px', fontWeight: '600', color: 'var(--allowed)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '✅ Allowed Variance'),
+              e('h3', {style: {fontSize: '12px', fontWeight: '600', color: 'var(--allowed)', margin: '16px 16px 8px', textTransform: 'uppercase'}}, '✅ Allowed Variance'),
               e('div', {className: 'grid-issues'}, drifts.filter(d => d._riskLevel === 'allowed').map((drift, i) => 
                 e(AllowedVarianceIssue, {key: i, item: drift, bucket: 'allowed'})
               ))
@@ -926,7 +931,7 @@
                   e('span', {style: {fontSize: '20px'}}, 
                     kind === 'high' ? '🔴' : kind === 'medium' ? '🟠' : kind === 'low' ? '🟢' : '✅'),
                   e('div', null, [
-                    e('div', {style: {fontWeight: '600', fontSize: '16px', color: riskColor}}, fileName),
+                    e('div', {style: {fontWeight: '500', fontSize: '14px', color: riskColor}}, fileName),
                     e('div', {style: {fontSize: '14px', color: 'var(--muted)'}}, 
                       `${fileDrifts.length} drift${fileDrifts.length !== 1 ? 's' : ''}`)
                   ])

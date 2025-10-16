@@ -639,19 +639,21 @@ async def analyze_service(service_id: str, environment: str, background_tasks: B
 
 @app.get("/service/{service_id}", response_class=HTMLResponse)
 async def service_detail(request: Request, service_id: str):
-    """Serve service-specific dashboard using React UI (same as legacy)"""
+    """
+    [DEPRECATED] Service-specific dashboard
+    
+    This endpoint is deprecated. All functionality has been moved to the 
+    Branch & Environment page's "Drift Analysis" tab for better UX.
+    
+    Redirecting to: /branch-environment?id={service_id}&tab=deployment
+    """
     if service_id not in SERVICES_CONFIG:
         raise HTTPException(404, f"Service {service_id} not found")
     
-    config = SERVICES_CONFIG[service_id]
-    
-    # Use the same React-based dashboard as index.html
-    # but with service-specific data endpoint
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "service_id": service_id,
-        "service_name": config["name"]
-    })
+    # Redirect to Branch & Environment page with Drift Analysis tab
+    # This provides the same functionality without a separate page
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/branch-environment?id={service_id}&tab=deployment", status_code=301)
 
 
 @app.get("/api/services/{service_id}/llm-output")

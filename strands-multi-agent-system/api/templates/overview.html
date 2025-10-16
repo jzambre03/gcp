@@ -170,12 +170,12 @@
     
     .services-table tbody tr {
       border-bottom: 1px solid #f0f0f0;
-      cursor: pointer;
+      cursor: default;  /* ✅ Changed from pointer - row is not clickable */
       transition: background-color 0.15s;
     }
     
     .services-table tbody tr:hover {
-      background: #fafafa;
+      background: #fafafa;  /* Keep subtle hover for better readability */
     }
     
     .services-table tbody tr:last-child {
@@ -453,7 +453,8 @@
         }, [service.id, service.environments]);
         
         const handleRowClick = () => {
-          window.location.href = `/service/${service.id}`;
+          // Go to branch-environment page with Drift Analysis tab
+          window.location.href = `/branch-environment?id=${service.id}&tab=deployment`;
         };
         
         const handleAnalyze = (e) => {
@@ -463,7 +464,8 @@
         
         const handleView = (e) => {
           e.stopPropagation();
-          window.location.href = `/service/${service.id}`;
+          // Go to branch-environment page with Drift Analysis tab
+          window.location.href = `/branch-environment?id=${service.id}&tab=deployment`;
         };
         
         const handleBranchEnvironment = (e) => {
@@ -481,7 +483,7 @@
           return names[env] || env;
         };
         
-        return e('tr', {onClick: handleRowClick}, [
+        return e('tr', {}, [  // ✅ Removed onClick - row is not clickable anymore
           e('td', {key: 'service'}, 
             e('div', {className: 'service-name'}, service.name)
           ),
@@ -576,7 +578,8 @@
             }
             
             setTimeout(() => {
-              window.location.href = `/service/${serviceId}`;
+              // Navigate to branch-environment page with Drift Analysis tab
+              window.location.href = `/branch-environment?id=${serviceId}&tab=deployment`;
             }, 1000);
             
           } catch (err) {
