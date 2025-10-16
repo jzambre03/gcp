@@ -1028,9 +1028,10 @@
                 if (runId.includes('_')) {
                   const parts = runId.split('_');
                   // Find environment position
+                  // parts[0] = "run", parts[1] = date, parts[2] = time, parts[3:] = service name
                   const envPos = parts.findIndex(part => ['prod', 'dev', 'qa', 'staging'].includes(part));
-                  if (envPos > 2) {
-                    const extractedServiceId = parts.slice(2, envPos).join('_');
+                  if (envPos > 3) {  // Changed from > 2 to > 3 (skip run, date, time)
+                    const extractedServiceId = parts.slice(3, envPos).join('_');
                     console.log(`🔍 Frontend extracted service_id: '${extractedServiceId}' from run_id: '${runId}'`);
                     actualServiceId = extractedServiceId;
                   }
