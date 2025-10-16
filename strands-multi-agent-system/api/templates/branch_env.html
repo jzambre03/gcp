@@ -158,6 +158,8 @@
         const [serviceConfig, setServiceConfig] = React.useState(null);
         const [certificationUpdateTrigger, setCertificationUpdateTrigger] = React.useState(0);
         const [triggerAnalysis, setTriggerAnalysis] = React.useState(0);  // ✅ Counter to trigger analysis
+        const [persistedDriftData, setPersistedDriftData] = React.useState(null);  // ✅ Persist drift data across tab switches
+        const [persistedHasRunAnalysis, setPersistedHasRunAnalysis] = React.useState(false);  // ✅ Persist analysis flag
         
         // ✅ Auto-switch to Drift Analysis tab if run_id is provided
         React.useEffect(() => {
@@ -293,7 +295,7 @@
           // Tab Content (reordered to match tab order)
           activeTab === 'overview' && e(OverviewTab, {issueData, onStagingClick: handleStagingClick, serviceConfig, serviceId, certificationUpdateTrigger}),
           activeTab === 'certifications' && e(CertificationsTab, {issueData, onStagingClick: handleStagingClick, onRecertifyClick: handleRecertifyClick, serviceConfig, serviceId, onCertificationUpdate: triggerCertificationUpdate}),
-          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: currentEnvironmentForAnalysis, triggerAnalysis, runId}),
+          activeTab === 'deployment' && e(DeploymentTab, {serviceId, currentEnvironment: currentEnvironmentForAnalysis, triggerAnalysis, runId, persistedDriftData, setPersistedDriftData, persistedHasRunAnalysis, setPersistedHasRunAnalysis}),
           activeTab === 'history' && e(HistoryTab, {serviceId, currentEnvironment: 'prod'}),
           
           // Staging Modal
@@ -1023,15 +1025,46 @@
       // END OF HELPER COMPONENTS
       // ============================================================================
       
-      function DeploymentTab({serviceId, currentEnvironment, triggerAnalysis, runId}) {
-        const [driftData, setDriftData] = React.useState(null);
+      function DeploymentTab({serviceId, currentEnvironment, triggerAnalysis, runId, persistedDriftData, setPersistedDriftData, persistedHasRunAnalysis, setPersistedHasRunAnalysis}) {
+        const [driftData, setDriftData] = React.useState(persistedDriftData);  // ✅ Initialize from persisted data
         const [loading, setLoading] = React.useState(false);  // ✅ Start with false - no auto-loading
         const [error, setError] = React.useState(null);
         const [activeFilter, setActiveFilter] = React.useState('all');
-        const [hasRunAnalysis, setHasRunAnalysis] = React.useState(false);  // ✅ Track if user has run analysis
+        const [hasRunAnalysis, setHasRunAnalysis] = React.useState(persistedHasRunAnalysis);  // ✅ Initialize from persisted flag
         const [runDetails, setRunDetails] = React.useState(null);  // ✅ Store specific run details
         const [selectedFiles, setSelectedFiles] = React.useState({});  // ✅ Track which files are selected for certification
         const [certifying, setCertifying] = React.useState(false);  // ✅ Track certification in progress
+        
+        // ✅ Helper function to update both local and persisted drift data + sessionStorage
+        const updateDriftData = React.useCallback((data) => {
+          setDriftData(data);
+          setPersistedDriftData(data);
+          // ✅ Store in sessionStorage for cross-page persistence
+          const storageKey = `drift_analysis_${serviceId}_${currentEnvironment}`;
+          if (data) {
+            sessionStorage.setItem(storageKey, JSON.stringify(data));
+          } else {
+            sessionStorage.removeItem(storageKey);
+          }
+        }, [setPersistedDriftData, serviceId, currentEnvironment]);
+        
+        // ✅ Load from sessionStorage on mount
+        React.useEffect(() => {
+          const storageKey = `drift_analysis_${serviceId}_${currentEnvironment}`;
+          const storedData = sessionStorage.getItem(storageKey);
+          if (storedData && !driftData) {
+            try {
+              const parsed = JSON.parse(storedData);
+              setDriftData(parsed);
+              setPersistedDriftData(parsed);
+              setHasRunAnalysis(true);
+              setPersistedHasRunAnalysis(true);
+            } catch (e) {
+              console.error('Failed to parse stored drift data:', e);
+              sessionStorage.removeItem(storageKey);
+            }
+          }
+        }, [serviceId, currentEnvironment]);
         
         // ✅ Function to run analysis (will be called by analyze button)
         const runAnalysis = React.useCallback(async () => {
@@ -1058,13 +1091,14 @@
                   throw new Error('Analysis completed but results not available yet. Please try again.');
                 }
                 const data = await response.json();
-                setDriftData(data.data || {});
+                updateDriftData(data.data || {});  // ✅ Use helper to update both states
                 setHasRunAnalysis(true);
+                setPersistedHasRunAnalysis(true);  // ✅ Persist the flag
                 setError(null);
               } catch (err) {
                 console.error('Error loading analysis results:', err);
                 setError(err.message);
-                setDriftData(null);
+                updateDriftData(null);  // ✅ Use helper to update both states
               } finally {
                 setLoading(false);
               }
@@ -1110,11 +1144,12 @@
                 // Load drift analysis data for this run
                 const driftResponse = await fetch(`/api/services/${actualServiceId}/llm-output`);
                 if (driftResponse.ok) {
-                  const driftData = await driftResponse.json();
-                  setDriftData(driftData.data || {});
+                  const driftDataResponse = await driftResponse.json();
+                  updateDriftData(driftDataResponse.data || {});  // ✅ Use helper to update both states
                 }
                 
                 setHasRunAnalysis(true);
+                setPersistedHasRunAnalysis(true);  // ✅ Persist the flag
               } catch (err) {
                 console.error('Error loading run data:', err);
                 setError(err.message);
