@@ -830,7 +830,8 @@ def get_last_service_result(service_id: str, environment: Optional[str] = None):
                     with open(result_files[0], 'r', encoding='utf-8') as f:
                         stored_data = json.load(f)
                         print(f"✅ Loaded stored result for {service_id}/{environment} from: {result_files[0]}")
-                        return stored_data.get("result")
+                        # Return the whole stored_data (has validation_result at top level)
+                        return stored_data
                 except Exception as e:
                     print(f"⚠️ Could not load stored result for {service_id}/{environment}: {e}")
     else:
@@ -847,7 +848,8 @@ def get_last_service_result(service_id: str, environment: Optional[str] = None):
                 with open(most_recent, 'r', encoding='utf-8') as f:
                     stored_data = json.load(f)
                     print(f"✅ Loaded stored result for {service_id} from: {most_recent}")
-                    return stored_data.get("result")
+                    # Return the whole stored_data (has validation_result at top level)
+                    return stored_data
             except Exception as e:
                 print(f"⚠️ Could not load stored result for {service_id}: {e}")
     
@@ -1196,30 +1198,38 @@ async def get_service_branches(service_id: str, environment: str):
         golden_branches, drift_branches = get_all_branches(service_id, environment)
         active_golden_metadata = get_active_golden_branch_metadata(service_id, environment)
         
-        # ✅ Simply get drift count from latest validation result
+        # ✅ Simply get drift count from latest validation result (EXACTLY like main page)
         drift_count = 0
         has_drifts = False
         
-        # Check for latest analysis results in environment folder
-        service_results_dir = Path("config_data") / "service_results" / service_id / environment
-        if service_results_dir.exists():
-            result_files = sorted(service_results_dir.glob("validation_*.json"), reverse=True)
-            if result_files:
-                try:
-                    with open(result_files[0], 'r', encoding='utf-8') as f:
-                        result_data = json.load(f)
-                        
-                    llm_output = result_data.get("validation_result", {}).get("llm_output", {})
-                    summary = llm_output.get("summary", {})
-                    drift_count = summary.get("total_drifts", 0)
-                    has_drifts = drift_count > 0
-                    
-                    print(f"🔍 Drift Status for {service_id}/{environment}:")
-                    print(f"   Drift Count: {drift_count}")
-                    print(f"   Has Drifts: {has_drifts}")
-                    
-                except Exception as e:
-                    print(f"⚠️ Could not read drift analysis: {e}")
+        # Use the same function as main page to get result for specific environment
+        last_result = get_last_service_result(service_id, environment)
+        
+        if last_result:
+            print(f"🔍 Drift Check for {service_id}/{environment}")
+            print(f"   Result keys: {list(last_result.keys())}")
+            
+            # EXACTLY same logic as get_services endpoint (lines 572-583)
+            validation_result = last_result.get("validation_result", {})
+            
+            if validation_result and "llm_output" in validation_result:
+                llm_output = validation_result["llm_output"]
+                llm_summary = llm_output.get("summary", {})
+                drift_count = llm_summary.get("total_drifts", 0)
+                has_drifts = drift_count > 0
+                
+                print(f"   ✅ Found drift_count: {drift_count}, has_drifts: {has_drifts}")
+            # Fallback: Try direct llm_output (old structure)
+            elif "llm_output" in last_result and last_result["llm_output"]:
+                llm_output = last_result["llm_output"]
+                llm_summary = llm_output.get("summary", {})
+                drift_count = llm_summary.get("total_drifts", 0)
+                has_drifts = drift_count > 0
+                print(f"   ✅ Found drift_count (direct): {drift_count}")
+            else:
+                print(f"   ⚠️ No llm_output found in result")
+        else:
+            print(f"   ⚠️ No validation result found for {service_id}/{environment}")
         
         return {
             "service_id": service_id,
