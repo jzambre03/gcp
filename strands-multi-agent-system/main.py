@@ -568,16 +568,19 @@ async def get_services():
             # Debug: Print what we have
             print(f"🔍 Debug: last_result keys for {service_id}: {list(last_result.keys())}")
             
+            # Navigate to the correct nested structure: result → validation_result → llm_output → summary
+            validation_result = last_result.get("validation_result", {})
+            
             # Count ALL drifts from LLM output summary (high + medium + low + allowed variance)
-            if "llm_output" in last_result and last_result["llm_output"]:
-                llm_output = last_result["llm_output"]
-                print(f"🔍 Debug: llm_output keys: {list(llm_output.keys())}")
+            if validation_result and "llm_output" in validation_result:
+                llm_output = validation_result["llm_output"]
+                print(f"🔍 Debug: Found llm_output with keys: {list(llm_output.keys())}")
                 
                 llm_summary = llm_output.get("summary", {})
                 print(f"🔍 Debug: llm_summary: {llm_summary}")
                 
                 issues_count = llm_summary.get("total_drifts", 0)  # Count all drifts
-                print(f"🔍 Debug: issues_count = {issues_count}")
+                print(f"✅ Debug: Found {issues_count} total drifts for {service_id}")
                 
                 # Determine status based on risk distribution
                 high_risk = llm_summary.get("high_risk", 0)
@@ -589,20 +592,22 @@ async def get_services():
                     status = "warning"
                 elif issues_count > 0:
                     status = "healthy"  # Only low risk or allowed variance
-            # Fallback to old structure if LLM output not available
+            # Fallback: Try direct llm_output (old structure)
+            elif "llm_output" in last_result and last_result["llm_output"]:
+                llm_output = last_result["llm_output"]
+                llm_summary = llm_output.get("summary", {})
+                issues_count = llm_summary.get("total_drifts", 0)
+                print(f"✅ Debug: Found {issues_count} drifts (direct llm_output)")
+            # Fallback to enhanced_data structure
             elif "enhanced_data" in last_result:
                 enhanced = last_result["enhanced_data"]
                 issues_count = enhanced.get("policy_violations_count", 0)
                 if issues_count > 0:
                     status = "warning" if enhanced.get("overall_risk_level") in ["medium", "high"] else "healthy"
-            elif "validation_result" in last_result:
-                # Check validation result for issues
-                val_result = last_result["validation_result"]
-                if val_result.get("verdict") == "FAIL":
-                    status = "warning"
-                    issues_count = 1  # At least one issue if failed
+                print(f"✅ Debug: Found {issues_count} issues (enhanced_data)")
             else:
                 print(f"⚠️ Debug: No recognized data structure in last_result for {service_id}")
+                print(f"    Available keys: {list(last_result.keys())}")
         
         services.append({
             "id": service_id,
