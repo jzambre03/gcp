@@ -478,10 +478,43 @@
             'prod': 'Production',
             'dev': 'Development',
             'qa': 'QA',
-            'staging': 'Staging'
+            'staging': 'Staging',
+            'alpha': 'Alpha',
+            'beta1': 'Beta 1',
+            'beta2': 'Beta 2'
           };
-          return names[env] || env;
+          return names[env] || env.charAt(0).toUpperCase() + env.slice(1);
         };
+        
+        // Get status badge configuration
+        const getStatusBadge = (status) => {
+          const configs = {
+            'critical': {
+              text: 'Critical',
+              icon: '🔴',
+              bgColor: '#fee',
+              textColor: '#c00',
+              borderColor: '#fcc'
+            },
+            'warning': {
+              text: 'Warning',
+              icon: '🟡',
+              bgColor: '#fff3cd',
+              textColor: '#856404',
+              borderColor: '#ffc107'
+            },
+            'healthy': {
+              text: 'Healthy',
+              icon: '✅',
+              bgColor: '#d4edda',
+              textColor: '#155724',
+              borderColor: '#c3e6cb'
+            }
+          };
+          return configs[status] || configs['healthy'];
+        };
+        
+        const statusBadge = getStatusBadge(service.status);
         
         return e('tr', {}, [  // ✅ Removed onClick - row is not clickable anymore
           e('td', {key: 'service'}, 
@@ -499,6 +532,25 @@
                   null
               )
             )
+          ),
+          e('td', {key: 'status'}, 
+            e('span', {
+              style: {
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: '600',
+                backgroundColor: statusBadge.bgColor,
+                color: statusBadge.textColor,
+                border: `1px solid ${statusBadge.borderColor}`
+              }
+            }, [
+              e('span', {key: 'icon'}, statusBadge.icon),
+              e('span', {key: 'text'}, statusBadge.text)
+            ])
           ),
           e('td', {key: 'check'}, formatTimestamp(service.last_check)),
           e('td', {key: 'issues'}, 
@@ -676,9 +728,10 @@
                       e('tr', null, [
                         e('th', {key: '1'}, 'Service'),
                         e('th', {key: '2'}, 'Environment'),
-                        e('th', {key: '3'}, 'Last Check'),
-                        e('th', {key: '4'}, 'Issues'),
-                        e('th', {key: '5'}, 'Actions')
+                        e('th', {key: '3'}, 'Status'),
+                        e('th', {key: '4'}, 'Last Check'),
+                        e('th', {key: '5'}, 'Issues'),
+                        e('th', {key: '6'}, 'Actions')
                       ])
                     ),
                     e('tbody', {key: 'body'}, 
