@@ -565,10 +565,19 @@ async def get_services():
         issues_count = 0
         
         if last_result:
+            # Debug: Print what we have
+            print(f"🔍 Debug: last_result keys for {service_id}: {list(last_result.keys())}")
+            
             # Count ALL drifts from LLM output summary (high + medium + low + allowed variance)
             if "llm_output" in last_result and last_result["llm_output"]:
-                llm_summary = last_result["llm_output"].get("summary", {})
+                llm_output = last_result["llm_output"]
+                print(f"🔍 Debug: llm_output keys: {list(llm_output.keys())}")
+                
+                llm_summary = llm_output.get("summary", {})
+                print(f"🔍 Debug: llm_summary: {llm_summary}")
+                
                 issues_count = llm_summary.get("total_drifts", 0)  # Count all drifts
+                print(f"🔍 Debug: issues_count = {issues_count}")
                 
                 # Determine status based on risk distribution
                 high_risk = llm_summary.get("high_risk", 0)
@@ -592,6 +601,8 @@ async def get_services():
                 if val_result.get("verdict") == "FAIL":
                     status = "warning"
                     issues_count = 1  # At least one issue if failed
+            else:
+                print(f"⚠️ Debug: No recognized data structure in last_result for {service_id}")
         
         services.append({
             "id": service_id,
