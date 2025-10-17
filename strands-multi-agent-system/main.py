@@ -1182,7 +1182,7 @@ async def certify_selective_files(service_id: str, environment: str, request: Re
 
 @app.get("/api/services/{service_id}/branches/{environment}")
 async def get_service_branches(service_id: str, environment: str):
-    """Get all golden and drift branches for a service and environment"""
+    """Get all golden and drift branches for a service and environment with certification metadata"""
     if service_id not in SERVICES_CONFIG:
         raise HTTPException(404, f"Service {service_id} not found")
     
@@ -1191,19 +1191,55 @@ async def get_service_branches(service_id: str, environment: str):
         raise HTTPException(400, f"Invalid environment '{environment}'. Must be one of: {config['environments']}")
     
     try:
-        from shared.golden_branch_tracker import get_all_branches, get_active_golden_branch
+        from shared.golden_branch_tracker import get_all_branches, get_active_golden_branch_metadata
         
         golden_branches, drift_branches = get_all_branches(service_id, environment)
-        active_golden = get_active_golden_branch(service_id, environment)
+        active_golden_metadata = get_active_golden_branch_metadata(service_id, environment)
+        
+        # Get drift count from the latest analysis
+        drift_count = 0
+        has_new_drifts = False
+        
+        if active_golden_metadata:
+            # Check for analysis results
+            service_results_dir = Path("config_data") / "service_results" / service_id / environment
+            if service_results_dir.exists():
+                result_files = sorted(service_results_dir.glob("validation_*.json"), reverse=True)
+                if result_files:
+                    try:
+                        with open(result_files[0], 'r', encoding='utf-8') as f:
+                            result_data = json.load(f)
+                            
+                        llm_output = result_data.get("validation_result", {}).get("llm_output", {})
+                        summary = llm_output.get("summary", {})
+                        drift_count = summary.get("total_drifts", 0)
+                        
+                        # Check if analysis was done after certification
+                        analysis_timestamp = result_data.get("timestamp")
+                        cert_timestamp = active_golden_metadata.get("certified_at")
+                        
+                        if analysis_timestamp and cert_timestamp:
+                            from datetime import datetime as dt
+                            analysis_dt = dt.fromisoformat(analysis_timestamp.replace('Z', '+00:00'))
+                            cert_dt = dt.fromisoformat(cert_timestamp.replace('Z', '+00:00'))
+                            has_new_drifts = (drift_count > 0) and (analysis_dt > cert_dt)
+                        else:
+                            has_new_drifts = drift_count > 0
+                            
+                    except Exception as e:
+                        print(f"⚠️ Could not read drift analysis: {e}")
         
         return {
             "service_id": service_id,
             "environment": environment,
-            "active_golden_branch": active_golden,
+            "active_golden_branch": active_golden_metadata.get("branch_name") if active_golden_metadata else None,
+            "certified_at": active_golden_metadata.get("certified_at") if active_golden_metadata else None,
             "golden_branches": golden_branches,
             "drift_branches": drift_branches,
             "total_golden": len(golden_branches),
             "total_drift": len(drift_branches),
+            "drift_count": drift_count,
+            "has_new_drifts": has_new_drifts,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
