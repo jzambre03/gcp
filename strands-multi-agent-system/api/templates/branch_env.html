@@ -470,6 +470,18 @@
                 const hasNewDrifts = status.has_new_drifts || false;
                 const isCertified = hasGolden;
                 
+                // Debug logging for beta2
+                if (env === 'beta2') {
+                  console.log('🔍 Overview Tab - Beta2 Status:', {
+                    status,
+                    hasGolden,
+                    certifiedAt,
+                    driftCount,
+                    hasNewDrifts,
+                    raw_has_new_drifts: status.has_new_drifts
+                  });
+                }
+                
                 // Format certification date
                 const formatDate = (isoDate) => {
                   if (!isoDate) return null;
@@ -586,9 +598,9 @@
                         }, '🔗 View in GitLab'),
                         e('span', {style: {color: 'var(--muted)', fontSize: '12px'}}, 'Opens in new tab')
               ])
-            ])
-          ]),
-          
+                    ])
+                  ]),
+                  
                   // Recent Branches
                   e('div', {style: {marginBottom: '16px'}}, [
                     e('h4', {style: {margin: '0 0 12px 0'}}, 'Recent Drift Branches'),
@@ -1671,7 +1683,7 @@
             }
           }, [
             e('div', {style: {fontSize: '24px'}}, '⚠️'),
-            e('div', null, [
+                e('div', null, [
               e('div', {style: {fontSize: '15px', fontWeight: '600', color: '#856404', marginBottom: '4px'}}, 'Environment Not Certified'),
               e('div', {style: {fontSize: '13px', color: '#856404'}}, 
                 `The ${selectedEnvironment} environment has no golden branch. Please certify in the "Certifications" tab.`
@@ -1694,7 +1706,7 @@
               e('div', {style: {fontWeight: '500', color: '#495057'}}, 
                 `Selected: ${getSelectedFilesCount()} of ${getTotalFilesCount()} files`
               ),
-              e('div', {style: {display: 'flex', gap: '8px'}}, [
+                e('div', {style: {display: 'flex', gap: '8px'}}, [
                 e('button', {
                   className: 'btn',
                   onClick: selectAllFiles,
@@ -1705,8 +1717,8 @@
                   onClick: deselectAllFiles,
                   style: {fontSize: '13px', padding: '6px 12px', backgroundColor: '#fff5f5', color: '#c92a2a', border: '1px solid #ffc9c9'}
                 }, '✗ Deselect All')
-              ])
-            ]),
+                ])
+              ]),
             e('button', {
               className: 'btn primary',
               onClick: certifySelectedFiles,
@@ -1969,6 +1981,18 @@
             const driftCount = cert.drift_count || 0;
             const hasNewDrifts = cert.has_new_drifts || false;
             
+            // Debug logging for beta2
+            if (env === 'beta2') {
+              console.log('🔍 Certifications Tab - Beta2 Cert:', {
+                cert,
+                isCertified,
+                certifiedAt,
+                driftCount,
+                hasNewDrifts,
+                raw_has_new_drifts: cert.has_new_drifts
+              });
+            }
+            
             // Format certification date
             const formatDate = (isoDate) => {
               if (!isoDate) return null;
@@ -1986,7 +2010,7 @@
                   ),
                   isCertified && e('span', {className: 'badge success'}, [
                     e('span', null, '✓'),
-                    'Certified'
+                'Certified'
                   ]),
                   // ✅ Drift warning tag
                   isCertified && hasNewDrifts && e('span', {
@@ -2021,8 +2045,8 @@
                   }, [
                     e('span', {key: 'icon'}, '✅'),
                     e('span', {key: 'text'}, 'No Drift')
-                  ])
-                ]),
+            ])
+          ]),
                 e('div', {style: {display: 'flex', gap: '8px'}}, [
                   isCertified ? [
                     e('button', {

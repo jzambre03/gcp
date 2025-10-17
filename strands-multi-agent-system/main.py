@@ -1218,16 +1218,26 @@ async def get_service_branches(service_id: str, environment: str):
                         analysis_timestamp = result_data.get("timestamp")
                         cert_timestamp = active_golden_metadata.get("certified_at")
                         
+                        print(f"🔍 Drift Check for {service_id}/{environment}:")
+                        print(f"   Drift Count: {drift_count}")
+                        print(f"   Analysis Timestamp: {analysis_timestamp}")
+                        print(f"   Cert Timestamp: {cert_timestamp}")
+                        
                         if analysis_timestamp and cert_timestamp:
                             from datetime import datetime as dt
                             analysis_dt = dt.fromisoformat(analysis_timestamp.replace('Z', '+00:00'))
                             cert_dt = dt.fromisoformat(cert_timestamp.replace('Z', '+00:00'))
                             has_new_drifts = (drift_count > 0) and (analysis_dt > cert_dt)
+                            print(f"   Analysis > Cert: {analysis_dt > cert_dt}")
+                            print(f"   Has New Drifts: {has_new_drifts}")
                         else:
                             has_new_drifts = drift_count > 0
+                            print(f"   Has New Drifts (no timestamp): {has_new_drifts}")
                             
                     except Exception as e:
                         print(f"⚠️ Could not read drift analysis: {e}")
+                        import traceback
+                        traceback.print_exc()
         
         return {
             "service_id": service_id,
