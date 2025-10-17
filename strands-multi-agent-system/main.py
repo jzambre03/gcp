@@ -565,14 +565,27 @@ async def get_services():
         issues_count = 0
         
         if last_result:
-            # Check if there are any policy violations or issues
-            if "enhanced_data" in last_result:
+            # Count ALL drifts from LLM output summary (high + medium + low + allowed variance)
+            if "llm_output" in last_result and last_result["llm_output"]:
+                llm_summary = last_result["llm_output"].get("summary", {})
+                issues_count = llm_summary.get("total_drifts", 0)  # Count all drifts
+                
+                # Determine status based on risk distribution
+                high_risk = llm_summary.get("high_risk", 0)
+                medium_risk = llm_summary.get("medium_risk", 0)
+                
+                if high_risk > 0:
+                    status = "critical"
+                elif medium_risk > 0:
+                    status = "warning"
+                elif issues_count > 0:
+                    status = "healthy"  # Only low risk or allowed variance
+            # Fallback to old structure if LLM output not available
+            elif "enhanced_data" in last_result:
                 enhanced = last_result["enhanced_data"]
                 issues_count = enhanced.get("policy_violations_count", 0)
                 if issues_count > 0:
                     status = "warning" if enhanced.get("overall_risk_level") in ["medium", "high"] else "healthy"
-                else:
-                    status = "healthy"
             elif "validation_result" in last_result:
                 # Check validation result for issues
                 val_result = last_result["validation_result"]
