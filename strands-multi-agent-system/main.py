@@ -1196,48 +1196,30 @@ async def get_service_branches(service_id: str, environment: str):
         golden_branches, drift_branches = get_all_branches(service_id, environment)
         active_golden_metadata = get_active_golden_branch_metadata(service_id, environment)
         
-        # Get drift count from the latest analysis
+        # ✅ Simply get drift count from latest validation result
         drift_count = 0
-        has_new_drifts = False
+        has_drifts = False
         
-        if active_golden_metadata:
-            # Check for analysis results
-            service_results_dir = Path("config_data") / "service_results" / service_id / environment
-            if service_results_dir.exists():
-                result_files = sorted(service_results_dir.glob("validation_*.json"), reverse=True)
-                if result_files:
-                    try:
-                        with open(result_files[0], 'r', encoding='utf-8') as f:
-                            result_data = json.load(f)
-                            
-                        llm_output = result_data.get("validation_result", {}).get("llm_output", {})
-                        summary = llm_output.get("summary", {})
-                        drift_count = summary.get("total_drifts", 0)
+        # Check for latest analysis results in environment folder
+        service_results_dir = Path("config_data") / "service_results" / service_id / environment
+        if service_results_dir.exists():
+            result_files = sorted(service_results_dir.glob("validation_*.json"), reverse=True)
+            if result_files:
+                try:
+                    with open(result_files[0], 'r', encoding='utf-8') as f:
+                        result_data = json.load(f)
                         
-                        # Check if analysis was done after certification
-                        analysis_timestamp = result_data.get("timestamp")
-                        cert_timestamp = active_golden_metadata.get("certified_at")
-                        
-                        print(f"🔍 Drift Check for {service_id}/{environment}:")
-                        print(f"   Drift Count: {drift_count}")
-                        print(f"   Analysis Timestamp: {analysis_timestamp}")
-                        print(f"   Cert Timestamp: {cert_timestamp}")
-                        
-                        if analysis_timestamp and cert_timestamp:
-                            from datetime import datetime as dt
-                            analysis_dt = dt.fromisoformat(analysis_timestamp.replace('Z', '+00:00'))
-                            cert_dt = dt.fromisoformat(cert_timestamp.replace('Z', '+00:00'))
-                            has_new_drifts = (drift_count > 0) and (analysis_dt > cert_dt)
-                            print(f"   Analysis > Cert: {analysis_dt > cert_dt}")
-                            print(f"   Has New Drifts: {has_new_drifts}")
-                        else:
-                            has_new_drifts = drift_count > 0
-                            print(f"   Has New Drifts (no timestamp): {has_new_drifts}")
-                            
-                    except Exception as e:
-                        print(f"⚠️ Could not read drift analysis: {e}")
-                        import traceback
-                        traceback.print_exc()
+                    llm_output = result_data.get("validation_result", {}).get("llm_output", {})
+                    summary = llm_output.get("summary", {})
+                    drift_count = summary.get("total_drifts", 0)
+                    has_drifts = drift_count > 0
+                    
+                    print(f"🔍 Drift Status for {service_id}/{environment}:")
+                    print(f"   Drift Count: {drift_count}")
+                    print(f"   Has Drifts: {has_drifts}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Could not read drift analysis: {e}")
         
         return {
             "service_id": service_id,
@@ -1249,7 +1231,7 @@ async def get_service_branches(service_id: str, environment: str):
             "total_golden": len(golden_branches),
             "total_drift": len(drift_branches),
             "drift_count": drift_count,
-            "has_new_drifts": has_new_drifts,
+            "has_drifts": has_drifts,  # ✅ Simplified: just check if drifts exist
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:

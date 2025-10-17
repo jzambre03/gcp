@@ -467,7 +467,7 @@
                 const hasGolden = status.active_golden_branch;
                 const certifiedAt = status.certified_at;
                 const driftCount = status.drift_count || 0;
-                const hasNewDrifts = status.has_new_drifts || false;
+                const hasDrifts = status.has_drifts || false;  // ✅ Simplified field name
                 const isCertified = hasGolden;
                 
                 // Debug logging for beta2
@@ -477,8 +477,8 @@
                     hasGolden,
                     certifiedAt,
                     driftCount,
-                    hasNewDrifts,
-                    raw_has_new_drifts: status.has_new_drifts
+                    hasDrifts,
+                    raw_has_drifts: status.has_drifts
                   });
                 }
                 
@@ -516,7 +516,7 @@
                       'Certified'
                     ]),
                     // ✅ Drift warning tag (similar to overview.html service table)
-                    isCertified && hasNewDrifts && e('span', {
+                    isCertified && hasDrifts && e('span', {
                       style: {
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -534,7 +534,7 @@
                       e('span', {key: 'text'}, `${driftCount} New Drift${driftCount > 1 ? 's' : ''}`)
                     ]),
                     // ✅ No drift indicator
-                    isCertified && !hasNewDrifts && e('span', {
+                    isCertified && !hasDrifts && e('span', {
                       style: {
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -1846,7 +1846,7 @@
                   active_golden_branch: data.active_golden_branch,
                   certified_at: data.certified_at,
                   drift_count: data.drift_count || 0,
-                  has_new_drifts: data.has_new_drifts || false
+                  has_drifts: data.has_drifts || false  // ✅ Simplified field name
                 };
               } catch (err) {
                 certData[env] = { golden_exists: false, error: err.message };
@@ -1979,7 +1979,7 @@
             
             const certifiedAt = cert.certified_at;
             const driftCount = cert.drift_count || 0;
-            const hasNewDrifts = cert.has_new_drifts || false;
+            const hasDrifts = cert.has_drifts || false;  // ✅ Simplified field name
             
             // Debug logging for beta2
             if (env === 'beta2') {
@@ -1988,8 +1988,8 @@
                 isCertified,
                 certifiedAt,
                 driftCount,
-                hasNewDrifts,
-                raw_has_new_drifts: cert.has_new_drifts
+                hasDrifts,
+                raw_has_drifts: cert.has_drifts
               });
             }
             
@@ -2013,7 +2013,7 @@
                 'Certified'
                   ]),
                   // ✅ Drift warning tag
-                  isCertified && hasNewDrifts && e('span', {
+                  isCertified && hasDrifts && e('span', {
                     style: {
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -2030,7 +2030,7 @@
                     e('span', {key: 'text'}, `${driftCount} New Drift${driftCount > 1 ? 's' : ''}`)
                   ]),
                   // ✅ No drift indicator
-                  isCertified && !hasNewDrifts && e('span', {
+                  isCertified && !hasDrifts && e('span', {
                     style: {
                       display: 'inline-flex',
                       alignItems: 'center',
