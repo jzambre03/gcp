@@ -830,8 +830,7 @@ def get_last_service_result(service_id: str, environment: Optional[str] = None):
                     with open(result_files[0], 'r', encoding='utf-8') as f:
                         stored_data = json.load(f)
                         print(f"✅ Loaded stored result for {service_id}/{environment} from: {result_files[0]}")
-                        # Return the whole stored_data (has validation_result at top level)
-                        return stored_data
+                        return stored_data.get("result")
                 except Exception as e:
                     print(f"⚠️ Could not load stored result for {service_id}/{environment}: {e}")
     else:
@@ -848,8 +847,7 @@ def get_last_service_result(service_id: str, environment: Optional[str] = None):
                 with open(most_recent, 'r', encoding='utf-8') as f:
                     stored_data = json.load(f)
                     print(f"✅ Loaded stored result for {service_id} from: {most_recent}")
-                    # Return the whole stored_data (has validation_result at top level)
-                    return stored_data
+                    return stored_data.get("result")
             except Exception as e:
                 print(f"⚠️ Could not load stored result for {service_id}: {e}")
     
@@ -1184,7 +1182,7 @@ async def certify_selective_files(service_id: str, environment: str, request: Re
 
 @app.get("/api/services/{service_id}/branches/{environment}")
 async def get_service_branches(service_id: str, environment: str):
-    """Get all golden and drift branches for a service and environment with certification metadata"""
+    """Get all golden and drift branches for a service and environment"""
     if service_id not in SERVICES_CONFIG:
         raise HTTPException(404, f"Service {service_id} not found")
     
@@ -1193,55 +1191,19 @@ async def get_service_branches(service_id: str, environment: str):
         raise HTTPException(400, f"Invalid environment '{environment}'. Must be one of: {config['environments']}")
     
     try:
-        from shared.golden_branch_tracker import get_all_branches, get_active_golden_branch_metadata
+        from shared.golden_branch_tracker import get_all_branches, get_active_golden_branch
         
         golden_branches, drift_branches = get_all_branches(service_id, environment)
-        active_golden_metadata = get_active_golden_branch_metadata(service_id, environment)
-        
-        # ✅ Simply get drift count from latest validation result (EXACTLY like main page)
-        drift_count = 0
-        has_drifts = False
-        
-        # Use the same function as main page to get result for specific environment
-        last_result = get_last_service_result(service_id, environment)
-        
-        if last_result:
-            print(f"🔍 Drift Check for {service_id}/{environment}")
-            print(f"   Result keys: {list(last_result.keys())}")
-            
-            # EXACTLY same logic as get_services endpoint (lines 572-583)
-            validation_result = last_result.get("validation_result", {})
-            
-            if validation_result and "llm_output" in validation_result:
-                llm_output = validation_result["llm_output"]
-                llm_summary = llm_output.get("summary", {})
-                drift_count = llm_summary.get("total_drifts", 0)
-                has_drifts = drift_count > 0
-                
-                print(f"   ✅ Found drift_count: {drift_count}, has_drifts: {has_drifts}")
-            # Fallback: Try direct llm_output (old structure)
-            elif "llm_output" in last_result and last_result["llm_output"]:
-                llm_output = last_result["llm_output"]
-                llm_summary = llm_output.get("summary", {})
-                drift_count = llm_summary.get("total_drifts", 0)
-                has_drifts = drift_count > 0
-                print(f"   ✅ Found drift_count (direct): {drift_count}")
-            else:
-                print(f"   ⚠️ No llm_output found in result")
-        else:
-            print(f"   ⚠️ No validation result found for {service_id}/{environment}")
+        active_golden = get_active_golden_branch(service_id, environment)
         
         return {
             "service_id": service_id,
             "environment": environment,
-            "active_golden_branch": active_golden_metadata.get("branch_name") if active_golden_metadata else None,
-            "certified_at": active_golden_metadata.get("certified_at") if active_golden_metadata else None,
+            "active_golden_branch": active_golden,
             "golden_branches": golden_branches,
             "drift_branches": drift_branches,
             "total_golden": len(golden_branches),
             "total_drift": len(drift_branches),
-            "drift_count": drift_count,
-            "has_drifts": has_drifts,  # ✅ Simplified: just check if drifts exist
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:

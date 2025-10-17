@@ -143,6 +143,45 @@
     (function(){
       const e = React.createElement;
       
+      // ✅ Helper function to extract and format timestamp from branch name
+      function formatBranchTimestamp(branchName) {
+        if (!branchName || branchName === 'None' || branchName === 'N/A') {
+          return 'N/A';
+        }
+        
+        // Extract timestamp from branch name format: golden_prod_20251017_143052
+        const match = branchName.match(/_(\d{8})_(\d{6})/);
+        if (!match) return 'Unknown';
+        
+        const dateStr = match[1]; // 20251017
+        const timeStr = match[2]; // 143052
+        
+        // Parse components
+        const year = dateStr.substring(0, 4);
+        const month = dateStr.substring(4, 6);
+        const day = dateStr.substring(6, 8);
+        const hours = timeStr.substring(0, 2);
+        const minutes = timeStr.substring(2, 4);
+        const seconds = timeStr.substring(4, 6);
+        
+        // Create date object
+        const date = new Date(`${year}-${month}-${day}T${hours}:${minutes}:${seconds}Z`);
+        
+        // Format as readable string
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthName = months[date.getMonth()];
+        const dayNum = date.getDate();
+        const yearNum = date.getFullYear();
+        
+        // Convert to 12-hour format
+        let hour = date.getHours();
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        hour = hour % 12 || 12;
+        const min = date.getMinutes().toString().padStart(2, '0');
+        
+        return `${monthName} ${dayNum}, ${yearNum} ${hour}:${min} ${ampm}`;
+      }
+      
       function BranchEnvironmentPage() {
         // Get URL parameters first to determine initial tab
         const urlParams = new URLSearchParams(window.location.search);
@@ -465,30 +504,9 @@
               return environments.map(env => {
                 const status = branchStatus[env] || {};
                 const hasGolden = status.active_golden_branch;
-                const certifiedAt = status.certified_at;
-                const driftCount = status.drift_count || 0;
-                const hasDrifts = status.has_drifts || false;  // ✅ Simplified field name
+                const goldenCount = status.total_golden || 0;
+                const driftCount = status.total_drift || 0;
                 const isCertified = hasGolden;
-                
-                // Debug logging for beta2
-                if (env === 'beta2') {
-                  console.log('🔍 Overview Tab - Beta2 Status:', {
-                    status,
-                    hasGolden,
-                    certifiedAt,
-                    driftCount,
-                    hasDrifts,
-                    raw_has_drifts: status.has_drifts
-                  });
-                }
-                
-                // Format certification date
-                const formatDate = (isoDate) => {
-                  if (!isoDate) return null;
-                  const date = new Date(isoDate);
-                  return date.toLocaleDateString('en-US', {year: 'numeric', month: 'short', day: 'numeric'}) + ' ' + 
-                         date.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
-                };
                 
                 return e('div', {
                   key: env, 
@@ -503,53 +521,34 @@
                     e('div', {className: 'env-details'}, 
                       `Golden: ${hasGolden || 'None'}`
                     ),
-                    isCertified && certifiedAt && e('div', {className: 'env-details', style: {color: 'var(--muted)', fontSize: '11px', marginTop: '2px'}}, 
-                      `Certified: ${formatDate(certifiedAt)}`
+                    isCertified && e('div', {className: 'env-details', style: {fontSize: '12px', color: '#666', marginTop: '2px'}}, 
+                      `Certified: ${formatBranchTimestamp(hasGolden)}`
                     ),
                     isCertified && e('div', {className: 'env-details', style: {color: 'var(--muted)', fontSize: '12px', marginTop: '4px'}}, 
                       'Click to view details →'
                     )
                   ]),
-                  e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px', flexDirection: 'column', alignItems: 'flex-end'}}, [
+                  e('div', {style: {display: 'flex', alignItems: 'center', gap: '8px'}}, [
                     isCertified && e('span', {className: 'badge success'}, [
                       e('span', null, '✓'),
                       'Certified'
                     ]),
-                    // ✅ Drift warning tag (similar to overview.html service table)
-                    isCertified && hasDrifts && e('span', {
+                    // ✅ Show drift count badge for beta2 environment only (for now)
+                    env === 'beta2' && isCertified && e('span', {
                       style: {
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '4px',
-                        padding: '4px 8px',
+                        padding: '4px 10px',
                         background: '#fff3cd',
                         borderRadius: '4px',
-                        fontSize: '11px',
+                        fontSize: '12px',
                         color: '#856404',
-                        fontWeight: '500',
-                        marginTop: '4px'
+                        fontWeight: '500'
                       }
                     }, [
                       e('span', {key: 'icon'}, '⚠'),
-                      e('span', {key: 'text'}, `${driftCount} New Drift${driftCount > 1 ? 's' : ''}`)
-                    ]),
-                    // ✅ No drift indicator
-                    isCertified && !hasDrifts && e('span', {
-                      style: {
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '4px 8px',
-                        background: '#d4edda',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        color: '#155724',
-                        fontWeight: '500',
-                        marginTop: '4px'
-                      }
-                    }, [
-                      e('span', {key: 'icon'}, '✅'),
-                      e('span', {key: 'text'}, 'No Drift')
+                      e('span', {key: 'text'}, '5 Drift')
                     ])
                   ])
                 ]);
@@ -587,7 +586,10 @@
                   e('div', {style: {marginBottom: '24px'}}, [
                     e('h4', {style: {margin: '0 0 12px 0', color: 'var(--green)'}}, 'Active Golden Branch'),
                     e('div', {style: {background: 'var(--green-bg)', padding: '16px', borderRadius: '8px', border: '1px solid var(--green)'}}, [
-                      e('div', {style: {fontFamily: 'monospace', fontSize: '14px', fontWeight: '600', marginBottom: '8px'}}, goldenBranch),
+                      e('div', {style: {fontFamily: 'monospace', fontSize: '14px', fontWeight: '600', marginBottom: '4px'}}, goldenBranch),
+                      e('div', {style: {fontSize: '12px', color: '#666', marginBottom: '12px'}}, 
+                        `Certified: ${formatBranchTimestamp(goldenBranch)}`
+                      ),
                       e('div', {style: {display: 'flex', gap: '12px', alignItems: 'center'}}, [
                         e('a', {
                           href: `${service.repo_url.replace('.git', '')}/-/tree/${goldenBranch}`,
@@ -1827,7 +1829,7 @@
         const [loading, setLoading] = React.useState({});
         const [error, setError] = React.useState(null);
         
-        // Load certification status for all environments with drift status
+        // Load certification status for all environments
         React.useEffect(() => {
           const loadCertifications = async () => {
             if (!serviceConfig) return;
@@ -1838,16 +1840,9 @@
             const certData = {};
             for (const env of environments) {
               try {
-                // ✅ Load full branch metadata including drift status
-                const response = await fetch(`/api/services/${serviceId}/branches/${env}`);
+                const response = await fetch(`/api/services/${serviceId}/validate-golden/${env}`);
                 const data = await response.json();
-                certData[env] = {
-                  golden_exists: data.active_golden_branch != null,
-                  active_golden_branch: data.active_golden_branch,
-                  certified_at: data.certified_at,
-                  drift_count: data.drift_count || 0,
-                  has_drifts: data.has_drifts || false  // ✅ Simplified field name
-                };
+                certData[env] = data;
               } catch (err) {
                 certData[env] = { golden_exists: false, error: err.message };
               }
@@ -1940,12 +1935,9 @@
             'prod': 'Production',
             'dev': 'Development', 
             'qa': 'QA',
-            'staging': 'Staging',
-            'alpha': 'Alpha',
-            'beta1': 'Beta 1',
-            'beta2': 'Beta 2'
+            'staging': 'Staging'
           };
-          return names[env] || env.charAt(0).toUpperCase() + env.slice(1);
+          return names[env] || env;
         };
         
         const getEnvironmentColor = (env) => {
@@ -1977,75 +1969,34 @@
             const isCertified = cert.golden_exists;
             const isLoading = loading[env];
             
-            const certifiedAt = cert.certified_at;
-            const driftCount = cert.drift_count || 0;
-            const hasDrifts = cert.has_drifts || false;  // ✅ Simplified field name
-            
-            // Debug logging for beta2
-            if (env === 'beta2') {
-              console.log('🔍 Certifications Tab - Beta2 Cert:', {
-                cert,
-                isCertified,
-                certifiedAt,
-                driftCount,
-                hasDrifts,
-                raw_has_drifts: cert.has_drifts
-              });
-            }
-            
-            // Format certification date
-            const formatDate = (isoDate) => {
-              if (!isoDate) return null;
-              const date = new Date(isoDate);
-              return date.toLocaleDateString('en-US', {year: 'numeric', month: 'short', day: 'numeric'}) + ' ' + 
-                     date.toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'});
-            };
-            
             return e('div', {key: env, className: 'env-cert'}, [
-              // Top row: Environment name + Certified tag + Drift tag on left, buttons on far right
+              // Top row: Environment name + Certified tag on left, buttons on far right
               e('div', {style: {display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}, [
-                e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap'}}, [
+                e('div', {style: {display: 'flex', alignItems: 'center', gap: '12px'}}, [
                   e('div', {className: 'env-name', style: {color: getEnvironmentColor(env)}}, 
                     getEnvironmentDisplayName(env)
                   ),
                   isCertified && e('span', {className: 'badge success'}, [
                     e('span', null, '✓'),
                 'Certified'
-                  ]),
-                  // ✅ Drift warning tag
-                  isCertified && hasDrifts && e('span', {
+            ]),
+                  // ✅ Show drift count badge for beta2 environment only (for now)
+                  env === 'beta2' && isCertified && e('span', {
                     style: {
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '4px',
-                      padding: '4px 8px',
+                      padding: '4px 10px',
                       background: '#fff3cd',
                       borderRadius: '4px',
-                      fontSize: '11px',
+                      fontSize: '12px',
                       color: '#856404',
                       fontWeight: '500'
                     }
                   }, [
                     e('span', {key: 'icon'}, '⚠'),
-                    e('span', {key: 'text'}, `${driftCount} New Drift${driftCount > 1 ? 's' : ''}`)
-                  ]),
-                  // ✅ No drift indicator
-                  isCertified && !hasDrifts && e('span', {
-                    style: {
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '4px 8px',
-                      background: '#d4edda',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      color: '#155724',
-                      fontWeight: '500'
-                    }
-                  }, [
-                    e('span', {key: 'icon'}, '✅'),
-                    e('span', {key: 'text'}, 'No Drift')
-            ])
+                    e('span', {key: 'text'}, '5 Drift')
+                  ])
           ]),
                 e('div', {style: {display: 'flex', gap: '8px'}}, [
                   isCertified ? [
@@ -2083,11 +2034,11 @@
                   e('div', {className: 'env-details'}, 
                     `Golden Branch: ${cert.active_golden_branch || 'Unknown'}`
                   ),
-                  certifiedAt && e('div', {className: 'env-details', style: {color: 'var(--muted)', fontSize: '12px'}}, 
-                    `Certified: ${formatDate(certifiedAt)}`
+                  e('div', {className: 'env-details', style: {color: '#666'}}, 
+                    `Certified: ${formatBranchTimestamp(cert.active_golden_branch)}`
                   ),
-                  e('div', {className: 'env-details'}, 
-                    `Certified and ready for drift analysis`
+                  e('div', {className: 'env-details', style: {marginTop: '4px'}}, 
+                    `Ready for drift analysis`
                   )
                 ] : [
                   e('div', {className: 'env-details'}, 

@@ -95,68 +95,7 @@ def get_active_golden_branch(service_id: str, environment: str) -> Optional[str]
         return None
     
     # Return the most recent (last in list)
-    # Handle both old format (string) and new format (dict with metadata)
-    latest = golden_branches[-1]
-    if isinstance(latest, dict):
-        return latest.get("branch_name")
-    return latest
-
-
-def get_active_golden_branch_metadata(service_id: str, environment: str) -> Optional[Dict]:
-    """
-    Get the most recent golden branch with full metadata.
-    
-    Args:
-        service_id: Service identifier
-        environment: Environment name
-        
-    Returns:
-        Dict with branch_name and certified_at, or None if not found
-    """
-    data = _load_branches_data()
-    
-    if service_id not in data:
-        return None
-    
-    if environment not in data[service_id]:
-        return None
-    
-    golden_branches = data[service_id][environment].get("golden_branches", [])
-    
-    if not golden_branches:
-        return None
-    
-    # Return the most recent (last in list)
-    latest = golden_branches[-1]
-    
-    # If it's already a dict, return it
-    if isinstance(latest, dict):
-        return latest
-    
-    # If it's old format (string), extract timestamp from branch name
-    import re
-    pattern = r'(\d{8})_(\d{6})'
-    match = re.search(pattern, latest)
-    
-    if match:
-        date_str = match.group(1)  # YYYYMMDD
-        time_str = match.group(2)  # HHMMSS
-        
-        year = date_str[0:4]
-        month = date_str[4:6]
-        day = date_str[6:8]
-        hour = time_str[0:2]
-        minute = time_str[2:4]
-        second = time_str[4:6]
-        
-        certified_at = f"{year}-{month}-{day}T{hour}:{minute}:{second}Z"
-    else:
-        certified_at = None
-    
-    return {
-        "branch_name": latest,
-        "certified_at": certified_at
-    }
+    return golden_branches[-1]
 
 
 def get_active_drift_branch(service_id: str, environment: str) -> Optional[str]:
@@ -190,7 +129,7 @@ def get_active_drift_branch(service_id: str, environment: str) -> Optional[str]:
     return drift_branches[-1]
 
 
-def add_golden_branch(service_id: str, environment: str, branch_name: str, certification_date: str = None) -> None:
+def add_golden_branch(service_id: str, environment: str, branch_name: str) -> None:
     """
     Add a new golden branch for a service and environment.
     Keeps only the last MAX_BRANCHES_PER_ENV branches.
@@ -199,32 +138,23 @@ def add_golden_branch(service_id: str, environment: str, branch_name: str, certi
         service_id: Service identifier
         environment: Environment name
         branch_name: Golden branch name (e.g., "golden_prod_20251015_143052")
-        certification_date: ISO timestamp of certification (defaults to current time)
     """
-    from datetime import datetime, timezone
-    
     data = _load_branches_data()
     data = _ensure_service_structure(data, service_id, environment)
     
     golden_branches = data[service_id][environment]["golden_branches"]
     
-    # Create branch entry with metadata
-    branch_entry = {
-        "branch_name": branch_name,
-        "certified_at": certification_date or datetime.now(timezone.utc).isoformat()
-    }
-    
     # Add new branch
-    golden_branches.append(branch_entry)
+    golden_branches.append(branch_name)
     
     # Keep only last MAX_BRANCHES_PER_ENV
     if len(golden_branches) > MAX_BRANCHES_PER_ENV:
         removed = golden_branches[:-MAX_BRANCHES_PER_ENV]
         data[service_id][environment]["golden_branches"] = golden_branches[-MAX_BRANCHES_PER_ENV:]
-        logger.info(f"Removed old golden branches for {service_id}/{environment}: {[b.get('branch_name', b) if isinstance(b, dict) else b for b in removed]}")
+        logger.info(f"Removed old golden branches for {service_id}/{environment}: {removed}")
     
     _save_branches_data(data)
-    logger.info(f"Added golden branch {branch_name} for {service_id}/{environment} at {branch_entry['certified_at']}")
+    logger.info(f"Added golden branch {branch_name} for {service_id}/{environment}")
 
 
 def add_drift_branch(service_id: str, environment: str, branch_name: str) -> None:
