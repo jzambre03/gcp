@@ -85,27 +85,37 @@ DEFAULT_CONFIG_PATHS = [
 
 # Service Configuration
 SERVICES_CONFIG = {
-    "cxp_ordering_services": {
-        "name": "CXP Ordering Services",
-        "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-ordering-services.git",
+    # Active Service
+    "cxp_ptg_adapter": {
+        "name": "CXP PTG Adapter",
+        "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-ptg-adapter.git",
         "main_branch": "main",
-        "environments": ["prod", "dev", "qa", "staging"],
+        "environments": ["prod", "alpha", "beta1", "beta2"],
         "config_paths": DEFAULT_CONFIG_PATHS  # Can be customized per service
     },
-    "cxp_credit_services": {
-        "name": "CXP Credit Services",
-        "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-credit-services.git",
-        "main_branch": "main",
-        "environments": ["prod", "dev", "qa", "staging"],
-        "config_paths": DEFAULT_CONFIG_PATHS
-    },
-    "cxp_config_properties": {
-        "name": "CXP Config Properties",
-        "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-config-properties.git",
-        "main_branch": "main",
-        "environments": ["prod", "dev", "qa", "staging"],
-        "config_paths": DEFAULT_CONFIG_PATHS
-    }
+    
+    # Commented out - Uncomment to enable
+    # "cxp_ordering_services": {
+    #     "name": "CXP Ordering Services",
+    #     "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-ordering-services.git",
+    #     "main_branch": "main",
+    #     "environments": ["prod", "dev", "qa", "staging"],
+    #     "config_paths": DEFAULT_CONFIG_PATHS
+    # },
+    # "cxp_credit_services": {
+    #     "name": "CXP Credit Services",
+    #     "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-credit-services.git",
+    #     "main_branch": "main",
+    #     "environments": ["prod", "dev", "qa", "staging"],
+    #     "config_paths": DEFAULT_CONFIG_PATHS
+    # },
+    # "cxp_config_properties": {
+    #     "name": "CXP Config Properties",
+    #     "repo_url": "https://gitlab.verizon.com/saja9l7/cxp-config-properties.git",
+    #     "main_branch": "main",
+    #     "environments": ["prod", "dev", "qa", "staging"],
+    #     "config_paths": DEFAULT_CONFIG_PATHS
+    # }
 }
 
 print(f"🏢 Services Configured:")
