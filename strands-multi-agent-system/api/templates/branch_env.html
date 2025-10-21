@@ -1218,20 +1218,22 @@
         const updateDriftData = React.useCallback((data) => {
           setDriftData(data);
           setPersistedDriftData(data);
-          // ✅ Store in sessionStorage for cross-page persistence
-          const storageKey = `drift_analysis_${serviceId}_${currentEnvironment}`;
+          // ✅ FIXED: Store in sessionStorage using selectedEnvironment (not currentEnvironment)
+          const storageKey = `drift_analysis_${serviceId}_${selectedEnvironment}`;
           if (data) {
             sessionStorage.setItem(storageKey, JSON.stringify(data));
           } else {
             sessionStorage.removeItem(storageKey);
           }
-        }, [setPersistedDriftData, serviceId, currentEnvironment]);
+        }, [setPersistedDriftData, serviceId, selectedEnvironment]);
         
-        // ✅ Load from sessionStorage on mount
+        // ✅ Load from sessionStorage when environment changes
         React.useEffect(() => {
-          const storageKey = `drift_analysis_${serviceId}_${currentEnvironment}`;
+          const storageKey = `drift_analysis_${serviceId}_${selectedEnvironment}`;
           const storedData = sessionStorage.getItem(storageKey);
-          if (storedData && !driftData) {
+          
+          if (storedData) {
+            // ✅ CRITICAL FIX: Always load data when environment changes (removed !driftData condition)
             try {
               const parsed = JSON.parse(storedData);
               setDriftData(parsed);
@@ -1242,8 +1244,14 @@
               console.error('Failed to parse stored drift data:', e);
               sessionStorage.removeItem(storageKey);
             }
+          } else {
+            // ✅ No stored data for this environment - clear the drift data
+            setDriftData(null);
+            setPersistedDriftData(null);
+            setHasRunAnalysis(false);
+            setPersistedHasRunAnalysis(false);
           }
-        }, [serviceId, currentEnvironment]);
+        }, [serviceId, selectedEnvironment]);  // ✅ Triggers when environment changes
         
         // ✅ Function to run analysis (will be called by analyze button)
         const runAnalysis = React.useCallback(async () => {
@@ -1271,7 +1279,8 @@
             // Wait a moment for analysis to complete, then load results
             setTimeout(async () => {
               try {
-                const response = await fetch(`/api/services/${serviceId}/llm-output`);
+                // ✅ FIXED: Pass environment parameter to load correct results
+                const response = await fetch(`/api/services/${serviceId}/llm-output?environment=${selectedEnvironment}`);
                 if (!response.ok) {
                   throw new Error('Analysis completed but results not available yet. Please try again.');
                 }
@@ -1326,8 +1335,9 @@
                 const runData = await runResponse.json();
                 setRunDetails(runData);
                 
-                // Load drift analysis data for this run
-                const driftResponse = await fetch(`/api/services/${actualServiceId}/llm-output`);
+                // ✅ FIXED: Extract environment from run data and pass it to llm-output
+                const runEnvironment = runData?.request_params?.environment || selectedEnvironment;
+                const driftResponse = await fetch(`/api/services/${actualServiceId}/llm-output?environment=${runEnvironment}`);
                 if (driftResponse.ok) {
                   const driftDataResponse = await driftResponse.json();
                   updateDriftData(driftDataResponse.data || {});  // ✅ Use helper to update both states

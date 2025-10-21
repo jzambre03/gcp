@@ -739,13 +739,13 @@ async def service_detail(request: Request, service_id: str):
 
 
 @app.get("/api/services/{service_id}/llm-output")
-async def get_service_llm_output(service_id: str):
+async def get_service_llm_output(service_id: str, environment: Optional[str] = None):
     """Get LLM output data for a specific service (for React dashboard)"""
     if service_id not in SERVICES_CONFIG:
         raise HTTPException(404, f"Service {service_id} not found")
     
-    # Get the last result for this service
-    last_result = get_last_service_result(service_id)
+    # ✅ FIXED: Get the last result for this service AND environment
+    last_result = get_last_service_result(service_id, environment)
     
     if not last_result:
         raise HTTPException(
