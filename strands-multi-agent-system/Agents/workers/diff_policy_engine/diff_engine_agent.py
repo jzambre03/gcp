@@ -307,9 +307,10 @@ class DiffPolicyEngineAgent(Agent):
             logger.info(f"\n📦 Generating final LLM output...")
             merged_llm_output = self._merge_llm_outputs(llm_outputs, overview, context_bundle)
             
-            # Save LLM output to file (NEW!)
+            # Save LLM output to file (NEW!) - ✅ ENVIRONMENT-SPECIFIC
             PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
-            llm_output_dir = PROJECT_ROOT / "config_data" / "llm_output"
+            environment = overview.get('environment', 'prod')  # ✅ Get environment from overview
+            llm_output_dir = PROJECT_ROOT / "config_data" / "llm_output" / environment  # ✅ Environment-specific folder
             llm_output_dir.mkdir(parents=True, exist_ok=True)
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

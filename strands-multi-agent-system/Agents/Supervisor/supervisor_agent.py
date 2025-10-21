@@ -387,9 +387,9 @@ def aggregate_validation_results(
         
         logger.info(f"✅ Aggregated results: {verdict} (Risk: {overall_risk_level}, Violations: {len(policy_violations)})")
         
-        # Save full aggregated results to file to avoid max_tokens issues
+        # Save full aggregated results to file to avoid max_tokens issues - ✅ ENVIRONMENT-SPECIFIC
         from pathlib import Path
-        aggregated_dir = Path("config_data/aggregated_results")
+        aggregated_dir = Path("config_data/aggregated_results") / environment  # ✅ Environment-specific folder
         aggregated_dir.mkdir(parents=True, exist_ok=True)
         
         aggregated_file = aggregated_dir / f"aggregated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -1230,24 +1230,30 @@ def run_validation(
     
     logger.info(f"Validation completed in {execution_time}ms")
     
-    # Try to load the latest LLM output and aggregated results for rich UI data
+    # Try to load the latest LLM output and aggregated results for rich UI data - ✅ ENVIRONMENT-SPECIFIC
     llm_output_data = {}
     aggregated_data = {}
     
     try:
-        # Find latest LLM output (NEW!)
-        llm_output_files = sorted(glob.glob("config_data/llm_output/llm_output_*.json"), reverse=True)
+        # ✅ CRITICAL FIX: Load environment-specific LLM output
+        llm_output_pattern = f"config_data/llm_output/{environment}/llm_output_*.json"
+        llm_output_files = sorted(glob.glob(llm_output_pattern), reverse=True)
         if llm_output_files:
             with open(llm_output_files[0], 'r', encoding='utf-8') as f:
                 llm_output_data = json.load(f)
-            logger.info(f"Loaded LLM output for UI: {llm_output_files[0]}")
+            logger.info(f"✅ Loaded LLM output for {environment}: {llm_output_files[0]}")
+        else:
+            logger.warning(f"⚠️ No LLM output found for environment '{environment}' at: {llm_output_pattern}")
         
-        # Find latest aggregated results  
-        aggregated_files = sorted(glob.glob("config_data/aggregated_results/aggregated_*.json"), reverse=True)
+        # ✅ CRITICAL FIX: Load environment-specific aggregated results
+        aggregated_pattern = f"config_data/aggregated_results/{environment}/aggregated_*.json"
+        aggregated_files = sorted(glob.glob(aggregated_pattern), reverse=True)
         if aggregated_files:
             with open(aggregated_files[0], 'r', encoding='utf-8') as f:
                 aggregated_data = json.load(f)
-            logger.info(f"Loaded aggregated results for UI: {aggregated_files[0]}")
+            logger.info(f"✅ Loaded aggregated results for {environment}: {aggregated_files[0]}")
+        else:
+            logger.warning(f"⚠️ No aggregated results found for environment '{environment}' at: {aggregated_pattern}")
     except Exception as e:
         logger.warning(f"Could not load analysis files for UI: {e}")
     
