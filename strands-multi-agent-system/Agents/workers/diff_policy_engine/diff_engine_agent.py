@@ -167,11 +167,45 @@ class DiffPolicyEngineAgent(Agent):
             # Check if there are deltas to analyze
             if not deltas:
                 logger.warning("No deltas found in context bundle")
+                
+                # ✅ CRITICAL FIX: Create empty LLM output file even with 0 deltas
+                environment = overview.get('environment', 'prod')
+                PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
+                llm_output_dir = PROJECT_ROOT / "config_data" / "llm_output" / environment
+                llm_output_dir.mkdir(parents=True, exist_ok=True)
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                llm_output_file = llm_output_dir / f"llm_output_{timestamp}.json"
+                
+                # Create empty LLM output structure
+                empty_llm_output = {
+                    "summary": {
+                        "total_drifts": 0,
+                        "high_risk": 0,
+                        "medium_risk": 0,
+                        "low_risk": 0,
+                        "allowed_variance": 0
+                    },
+                    "high": [],
+                    "medium": [],
+                    "low": [],
+                    "allowed_variance": [],
+                    "environment": environment,
+                    "analysis_timestamp": datetime.now().isoformat(),
+                    "message": "No deltas detected - environments are in sync"
+                }
+                
+                with open(llm_output_file, 'w', encoding='utf-8') as f:
+                    json.dump(empty_llm_output, f, indent=2, ensure_ascii=False)
+                
+                logger.info(f"✅ Created empty LLM output: {llm_output_file}")
+                
                 return TaskResponse(
                     task_id=task.task_id,
                     status="success",
                     result={
                         "context_bundle_file": context_bundle_file,
+                        "llm_output_file": str(llm_output_file),  # ✅ NEW: Include LLM output file
                         "ai_analysis": {
                             "message": "No deltas to analyze",
                             "overall_risk_level": "none"

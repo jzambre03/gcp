@@ -294,12 +294,21 @@ def aggregate_validation_results(
         # Get file paths from agent results (NEW: Phase 4)
         context_bundle_file = collector_results.get("context_bundle_file")
         enhanced_analysis_file = diff_engine_results.get("enhanced_analysis_file")
+        llm_output_file = diff_engine_results.get("llm_output_file")  # ✅ NEW: Handle LLM output for 0 deltas
         
-        if not context_bundle_file or not enhanced_analysis_file:
-            logger.error("Missing analysis files from agents")
+        if not context_bundle_file:
+            logger.error("Missing context_bundle_file from Config Collector")
             return {
                 "success": False,
-                "error": "Missing context_bundle_file or enhanced_analysis_file from agent results"
+                "error": "Missing context_bundle_file from Config Collector"
+            }
+        
+        # ✅ CRITICAL FIX: Handle case where no enhanced_analysis_file (0 deltas) but LLM output exists
+        if not enhanced_analysis_file and not llm_output_file:
+            logger.error("Missing both enhanced_analysis_file and llm_output_file from Diff Engine")
+            return {
+                "success": False,
+                "error": "Missing both enhanced_analysis_file and llm_output_file from Diff Engine"
             }
         
         # Load context bundle (from Config Collector - NEW: Phase 4)
@@ -324,21 +333,53 @@ def aggregate_validation_results(
                 "error": f"Failed to load context bundle file: {str(e)}"
             }
         
-        # Load enhanced analysis (from Diff Engine - NEW: Phase 4)
-        logger.info(f"Loading enhanced analysis from: {enhanced_analysis_file}")
-        try:
-            with open(enhanced_analysis_file, 'r', encoding='utf-8') as f:
-                enhanced_data = json.load(f)
-            
-            ai_policy_analysis = enhanced_data.get("ai_policy_analysis", {})
-            analyzed_deltas_with_ai = enhanced_data.get("analyzed_deltas_with_ai", [])
-            clusters = enhanced_data.get("clusters", [])  # NEW: Clustered deltas
-            
-        except Exception as e:
-            logger.error(f"Failed to load enhanced analysis file: {e}")
+        # Load enhanced analysis (from Diff Engine - NEW: Phase 4) or LLM output (for 0 deltas)
+        if enhanced_analysis_file:
+            logger.info(f"Loading enhanced analysis from: {enhanced_analysis_file}")
+            try:
+                with open(enhanced_analysis_file, 'r', encoding='utf-8') as f:
+                    enhanced_data = json.load(f)
+                
+                ai_policy_analysis = enhanced_data.get("ai_policy_analysis", {})
+                analyzed_deltas_with_ai = enhanced_data.get("analyzed_deltas_with_ai", [])
+                clusters = enhanced_data.get("clusters", [])  # NEW: Clustered deltas
+                
+            except Exception as e:
+                logger.error(f"Failed to load enhanced analysis file: {e}")
+                return {
+                    "success": False,
+                    "error": f"Failed to load enhanced analysis file: {str(e)}"
+                }
+        elif llm_output_file:
+            # ✅ CRITICAL FIX: Handle case where no enhanced analysis (0 deltas) but LLM output exists
+            logger.info(f"Loading LLM output from: {llm_output_file}")
+            try:
+                with open(llm_output_file, 'r', encoding='utf-8') as f:
+                    llm_data = json.load(f)
+                
+                # Create empty enhanced analysis structure from LLM output
+                ai_policy_analysis = {
+                    "policy_violations": [],
+                    "overall_risk_level": "none",
+                    "risk_assessment": {"overall_risk": "low"},
+                    "recommendations": []
+                }
+                analyzed_deltas_with_ai = []
+                clusters = []
+                
+                logger.info("✅ Using LLM output for 0-delta analysis")
+                
+            except Exception as e:
+                logger.error(f"Failed to load LLM output file: {e}")
+                return {
+                    "success": False,
+                    "error": f"Failed to load LLM output file: {str(e)}"
+                }
+        else:
+            logger.error("No enhanced analysis or LLM output file available")
             return {
                 "success": False,
-                "error": f"Failed to load enhanced analysis file: {str(e)}"
+                "error": "No enhanced analysis or LLM output file available"
             }
         
         # Extract key metrics from enhanced analysis
