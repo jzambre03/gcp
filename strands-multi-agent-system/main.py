@@ -1196,6 +1196,22 @@ async def get_service_branches(service_id: str, environment: str):
         golden_branches, drift_branches = get_all_branches(service_id, environment)
         active_golden = get_active_golden_branch(service_id, environment)
         
+        # Get drift count from last validation result for this environment
+        drift_count = 0
+        last_result = get_last_service_result(service_id, environment)
+        if last_result:
+            # Navigate to the correct nested structure
+            validation_result = last_result.get("validation_result", {})
+            if validation_result and "llm_output" in validation_result:
+                llm_output = validation_result["llm_output"]
+                llm_summary = llm_output.get("summary", {})
+                drift_count = llm_summary.get("total_drifts", 0)
+            # Fallback: Try direct llm_output
+            elif "llm_output" in last_result:
+                llm_output = last_result["llm_output"]
+                llm_summary = llm_output.get("summary", {})
+                drift_count = llm_summary.get("total_drifts", 0)
+        
         return {
             "service_id": service_id,
             "environment": environment,
@@ -1204,6 +1220,7 @@ async def get_service_branches(service_id: str, environment: str):
             "drift_branches": drift_branches,
             "total_golden": len(golden_branches),
             "total_drift": len(drift_branches),
+            "drift_count": drift_count,  # ✅ NEW: Include drift count from last analysis
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
@@ -1226,11 +1243,28 @@ async def validate_golden_branch(service_id: str, environment: str):
         exists = validate_golden_exists(service_id, environment)
         active_branch = get_active_golden_branch(service_id, environment) if exists else None
         
+        # Get drift count from last validation result for this environment
+        drift_count = 0
+        last_result = get_last_service_result(service_id, environment)
+        if last_result:
+            # Navigate to the correct nested structure
+            validation_result = last_result.get("validation_result", {})
+            if validation_result and "llm_output" in validation_result:
+                llm_output = validation_result["llm_output"]
+                llm_summary = llm_output.get("summary", {})
+                drift_count = llm_summary.get("total_drifts", 0)
+            # Fallback: Try direct llm_output
+            elif "llm_output" in last_result:
+                llm_output = last_result["llm_output"]
+                llm_summary = llm_output.get("summary", {})
+                drift_count = llm_summary.get("total_drifts", 0)
+        
         return {
             "service_id": service_id,
             "environment": environment,
             "golden_exists": exists,
             "active_golden_branch": active_branch,
+            "drift_count": drift_count,  # ✅ NEW: Include drift count from last analysis
             "message": "Golden branch found" if exists else "No golden branch found. Please create a golden baseline first.",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }

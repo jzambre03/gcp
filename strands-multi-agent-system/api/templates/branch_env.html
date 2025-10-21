@@ -533,8 +533,8 @@
                       e('span', null, '✓'),
                       'Certified'
                     ]),
-                    // ✅ Show drift count badge for beta2 environment only (for now)
-                    env === 'beta2' && isCertified && e('span', {
+                    // ✅ Show drift count badge for non-production environments (alpha, beta1, beta2)
+                    isCertified && env !== 'prod' && status.drift_count > 0 && e('span', {
                       style: {
                         display: 'inline-flex',
                         alignItems: 'center',
@@ -548,7 +548,7 @@
                       }
                     }, [
                       e('span', {key: 'icon'}, '⚠'),
-                      e('span', {key: 'text'}, '5 Drift')
+                      e('span', {key: 'text'}, `${status.drift_count} Drift`)
                     ])
                   ])
                 ]);
@@ -1980,8 +1980,8 @@
                     e('span', null, '✓'),
                 'Certified'
             ]),
-                  // ✅ Show drift count badge for beta2 environment only (for now)
-                  env === 'beta2' && isCertified && e('span', {
+                  // ✅ Show drift count badge for non-production environments (alpha, beta1, beta2)
+                  isCertified && env !== 'prod' && cert.drift_count > 0 && e('span', {
                     style: {
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1995,8 +1995,8 @@
                     }
                   }, [
                     e('span', {key: 'icon'}, '⚠'),
-                    e('span', {key: 'text'}, '5 Drift')
-                  ])
+                    e('span', {key: 'text'}, `${cert.drift_count} Drift`)
+            ])
           ]),
                 e('div', {style: {display: 'flex', gap: '8px'}}, [
                   isCertified ? [
