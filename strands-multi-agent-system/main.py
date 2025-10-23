@@ -180,6 +180,30 @@ class QuickAnalysisRequest(BaseModel):
     pass
 
 
+class InferenceRequest(BaseModel):
+    """Simple inference API request with service name and environment"""
+    service_name: str = Field(
+        description="Service identifier (e.g., 'cxp_ptg_adapter')"
+    )
+    environment: str = Field(
+        description="Environment to analyze (e.g., 'prod', 'alpha', 'beta1', 'beta2')"
+    )
+    
+    @field_validator('service_name')
+    @classmethod
+    def validate_service_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError('service_name cannot be empty')
+        return v.strip()
+    
+    @field_validator('environment')
+    @classmethod
+    def validate_environment(cls, v):
+        if not v or not v.strip():
+            raise ValueError('environment cannot be empty')
+        return v.strip().lower()
+
+
 # Global state
 latest_results: Optional[Dict[str, Any]] = None
 validation_in_progress: bool = False
@@ -673,6 +697,180 @@ async def analyze_service(service_id: str, environment: str, background_tasks: B
     store_service_result(service_id, environment, result)
     
     return result
+
+
+@app.post("/api/inference")
+async def inference_api(request: InferenceRequest, background_tasks: BackgroundTasks):
+    """
+    🤖 Simple Inference API - Run drift analysis with JSON input
+    
+    **Input:**
+    ```json
+    {
+      "service_name": "cxp_ptg_adapter",
+      "environment": "alpha"
+    }
+    ```
+    
+    **Output:**
+    Complete drift analysis results with:
+    - Configuration deltas
+    - Risk assessment
+    - Policy violations
+    - AI-powered recommendations
+    
+    **Use Case:**
+    Perfect for external systems/tools that need to:
+    - Trigger analysis programmatically
+    - Get results in a single API call
+    - Integrate with CI/CD pipelines
+    - Build custom dashboards
+    """
+    service_name = request.service_name
+    environment = request.environment
+    
+    # Validate service exists
+    if service_name not in SERVICES_CONFIG:
+        available_services = list(SERVICES_CONFIG.keys())
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": f"Service '{service_name}' not found",
+                "available_services": available_services,
+                "hint": f"Use one of: {', '.join(available_services)}"
+            }
+        )
+    
+    config = SERVICES_CONFIG[service_name]
+    
+    # Validate environment
+    if environment not in config["environments"]:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": f"Invalid environment '{environment}' for service '{service_name}'",
+                "valid_environments": config["environments"],
+                "hint": f"Use one of: {', '.join(config['environments'])}"
+            }
+        )
+    
+    print("\n" + "=" * 80)
+    print("🤖 INFERENCE API REQUEST")
+    print("=" * 80)
+    print(f"📋 Service Name: {service_name}")
+    print(f"🌍 Environment: {environment}")
+    print(f"📦 Repository: {config['repo_url']}")
+    print(f"🌿 Main Branch: {config['main_branch']}")
+    print("=" * 80)
+    print("🔄 Running drift analysis...")
+    print("=" * 80)
+    
+    # Create validation request
+    validation_request = ValidationRequest(
+        repo_url=config["repo_url"],
+        main_branch=config["main_branch"],
+        environment=environment,
+        target_folder="",
+        project_id=f"{service_name}_{environment}",
+        mr_iid=f"{service_name}_{environment}_inference_{int(datetime.now().timestamp())}"
+    )
+    
+    try:
+        # Run analysis
+        result = await validate_configuration(validation_request, background_tasks)
+        
+        # Store result for future reference
+        store_service_result(service_name, environment, result)
+        
+        # Get LLM output for enhanced response
+        llm_output = None
+        validation_result = result.get("validation_result", {})
+        run_id = validation_result.get("run_id", "unknown")
+        
+        try:
+            last_result = get_last_service_result(service_name, environment)
+            if last_result:
+                llm_output = last_result.get("validation_result", {}).get("llm_output", {})
+        except Exception as e:
+            print(f"⚠️ Could not load LLM output: {e}")
+        
+        # Extract summary data
+        llm_summary = llm_output.get("summary", {}) if llm_output else {}
+        total_config_files = llm_summary.get("total_config_files", 0)
+        files_with_drift = llm_summary.get("files_with_drift", 0)
+        total_drifts = llm_summary.get("total_drifts", 0)
+        high_risk = llm_summary.get("high_risk", 0)
+        medium_risk = llm_summary.get("medium_risk", 0)
+        low_risk = llm_summary.get("low_risk", 0)
+        allowed_variance = llm_summary.get("allowed_variance", 0)
+        
+        # Determine overall risk level
+        if high_risk > 0:
+            overall_risk = "HIGH"
+        elif medium_risk > 0:
+            overall_risk = "MEDIUM"
+        elif low_risk > 0:
+            overall_risk = "LOW"
+        else:
+            overall_risk = "NONE"
+        
+        # Generate URL to drift analysis tab
+        base_url = os.getenv("BASE_URL", "http://localhost:3000")
+        analysis_url = f"{base_url}/branch-environment?id={service_name}&run_id={run_id}&tab=deployment"
+        
+        # Prepare clean inference response (metadata only)
+        inference_response = {
+            "status": "success",
+            "service_name": service_name,
+            "environment": environment,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "run_id": run_id,
+            "metrics": {
+                "total_config_files": total_config_files,
+                "files_with_drift": files_with_drift,
+                "total_drifts": total_drifts,
+                "high_risk_drifts": high_risk,
+                "medium_risk_drifts": medium_risk,
+                "low_risk_drifts": low_risk,
+                "allowed_variance": allowed_variance,
+                "overall_risk_level": overall_risk
+            },
+            "execution_time_seconds": result.get("execution_time_seconds", 0),
+            "analysis_url": analysis_url
+        }
+        
+        print("\n" + "=" * 80)
+        print("✅ INFERENCE COMPLETED")
+        print("=" * 80)
+        print(f"📊 Total Config Files:    {total_config_files}")
+        print(f"📁 Files with Drift:      {files_with_drift}")
+        print(f"🔍 Total Drifts:          {total_drifts}")
+        print(f"   ├─ ⚠️  High Risk:       {high_risk}")
+        print(f"   ├─ ⚡ Medium Risk:      {medium_risk}")
+        print(f"   ├─ ℹ️  Low Risk:        {low_risk}")
+        print(f"   └─ ✅ Allowed:          {allowed_variance}")
+        print(f"🎯 Overall Risk Level:    {overall_risk}")
+        print(f"⏱️  Execution Time:        {result.get('execution_time_seconds', 0):.2f}s")
+        print(f"🔗 View Details:          {analysis_url}")
+        print("=" * 80)
+        
+        return inference_response
+        
+    except Exception as e:
+        print("\n" + "=" * 80)
+        print("❌ INFERENCE FAILED")
+        print("=" * 80)
+        print(f"Error: {str(e)}")
+        print("=" * 80)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Inference failed",
+                "message": str(e),
+                "service_name": service_name,
+                "environment": environment
+            }
+        )
 
 
 @app.get("/run/{run_id}", response_class=HTMLResponse)
